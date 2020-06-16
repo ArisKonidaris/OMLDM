@@ -46,6 +46,7 @@ case class HubMessage(var networkId: Int,
 
   def setRequest(request: Request): Unit = this.request = request
 
+
   override def equals(obj: Any): Boolean = {
     obj match {
       case HubMessage(net, ops, src, dsts, dt, req) =>
@@ -59,6 +60,6 @@ case class HubMessage(var networkId: Int,
     }
   }
 
-  override def toString: String = s"HubMessage($networkId, $operations, $source, $destinations, $data, $request)"
+  override def toString: String = s"HubMessage(" + s"$networkId, $operations, $source, $destinations, $data, $request)"
 
 }

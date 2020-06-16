@@ -3,6 +3,7 @@ package omldm.utils.generators
 import BipartiteTopologyAPI.NodeInstance
 import ControlAPI.Request
 import mlAPI.mlParameterServers.parameterServers.{AsynchronousParameterServer, SynchronousParameterServer}
+import mlAPI.mlworkers.MLPredictor
 import mlAPI.mlworkers.worker.MLPeriodicWorker
 
 import scala.collection.mutable
@@ -27,7 +28,7 @@ case class MLNodeGenerator() extends NodeGenerator {
         }
       else MLPeriodicWorker().configureWorker(request)
     } catch {
-      case e: Exception => throw new RuntimeException("Something went wrong while creating a new ML FlinkSpoke", e)
+      case e: Exception => throw new RuntimeException("Something went wrong while creating a new ML Flink Spoke.", e)
     }
   }
 
@@ -48,7 +49,15 @@ case class MLNodeGenerator() extends NodeGenerator {
         }
       else AsynchronousParameterServer().configureParameterServer(request)
     } catch {
-      case e: Exception => throw new RuntimeException("Something went wrong while creating a new ML FlinkHub", e)
+      case e: Exception => throw new RuntimeException("Something went wrong while creating a new ML Flink Hub.", e)
+    }
+  }
+
+  override def generatePredictorNode(request: Request): NodeInstance[_, _] = {
+    try {
+      new MLPredictor().configureWorker(request)
+    } catch {
+      case e: Exception => throw new RuntimeException("Something went wrong while creating an ML Predictor Node.", e)
     }
   }
 }

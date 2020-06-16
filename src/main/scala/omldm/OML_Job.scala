@@ -2,10 +2,13 @@ package omldm
 
 import java.util.Properties
 
-import ControlAPI.{DataInstance, QueryResponse, Request}
+import BipartiteTopologyAPI.operations.{CallType, RemoteCallIdentifier}
+import BipartiteTopologyAPI.sites.{NodeId, NodeType}
+import ControlAPI.{DataInstance, Prediction, QueryResponse, Request}
 import mlAPI.math.Point
+import mlAPI.parameters.ParameterDescriptor
 import omldm.messages.{ControlMessage, HubMessage, SpokeMessage}
-import omldm.operators.{FlinkHub, FlinkSpoke}
+import omldm.operators.{FlinkHub, FlinkPredictor, FlinkSpoke}
 import omldm.utils.generators.MLNodeGenerator
 import omldm.utils.parsers.dataStream.DataPointParser
 import omldm.utils.parsers.requestStream.PipelineMap
@@ -26,6 +29,7 @@ import org.apache.flink.util.Collector
 object OML_Job {
 
   val queryResponse: OutputTag[QueryResponse] = OutputTag[QueryResponse]("QueryResponse")
+  val predictions: OutputTag[Prediction] = OutputTag[Prediction]("predictionStream")
 
   def createProperties(brokerList: String, group_id: String)(implicit params: ParameterTool): Properties = {
     val properties: Properties = new Properties()
@@ -105,6 +109,7 @@ object OML_Job {
 
     /////////////////////////////////////////////////// Training ///////////////////////////////////////////////////////
 
+
     /** The broadcast messages of the Hub. */
     val coordinatorMessages: DataStream[ControlMessage] = psMessages
       .flatMap(new RichFlatMapFunction[HubMessage, ControlMessage] {
@@ -146,53 +151,63 @@ object OML_Job {
     ////////////////////////////////////////////////// Predicting //////////////////////////////////////////////////////
 
 
-//    val modelUpdates: DataStream[ControlMessage] =
-//      psMessages.filter({
-//        msg: ControlMessage =>
-//          msg.getRequest match {
-//            case Request => if (msg.getDestination.getNodeId == 0 && op == 1) true else false
-//            case null => false
-//          }
-//      }).flatMap(
-//        new RichFlatMapFunction[ControlMessage, ControlMessage] {
-//
-//          var counter: Int = 0
-//
-//          override def flatMap(message: ControlMessage, collector: Collector[ControlMessage]): Unit = {
-//
-//            if (counter == 5) {
-//              message.getParameters match {
-//                case _: Option[ParameterDescriptor] =>
-//                  for (i <- 0 until getRuntimeContext.getExecutionConfig.getParallelism) {
-//                    message.setWorkerID(i)
-//                    collector.collect(message)
-//                  }
-//                case _ => println("Something went wrong while updating the predictors")
-//              }
-//              counter = 0
-//            } else counter += 1
-//
-//          }
-//        }
-//      ).name("ModelUpdates")
-//
-//    /** Partitioning the prediction data along with the control messages to the predictors */
-//    val predictionDataBlocks: ConnectedStreams[DataInstance, ControlMessage] = forecastingSource
-//      .connect(validRequest
-//        .filter(x => x.container.get.request != "Query")
-//        .partitionCustom(random_partitioner, (x: ControlMessage) => x.workerID)
-//        .union(
-//          modelUpdates.partitionCustom(random_partitioner, (x: ControlMessage) => x.workerID)
-//        ))
-//
-//    /** The parallel prediction procedure happens here. */
-//    val predictionStream: DataStream[Prediction] = predictionDataBlocks
-//      .process(new Predictor[MLNodeGenerator])
-//      .name("Predictor")
+    val modelUpdates: DataStream[ControlMessage] =
+      coordinatorMessages.filter({
+        msg: ControlMessage =>
+          msg.getOperation match {
+            case _: RemoteCallIdentifier =>
+              if (msg.getDestination.getNodeId == 0 && msg.data.isInstanceOf[ParameterDescriptor])
+                true
+              else
+                false
+            case null => false
+          }
+      }).flatMap(
+        new RichFlatMapFunction[ControlMessage, ControlMessage] {
+          var counter: Int = 0
+          override def flatMap(message: ControlMessage, collector: Collector[ControlMessage]): Unit = {
+            if (counter == 5) {
+              message.getOperation.setCallType(CallType.ONE_WAY)
+              message.getData match {
+                case _: ParameterDescriptor =>
+                  for (i <- 0 until getRuntimeContext.getExecutionConfig.getParallelism) {
+                    message.setDestination(new NodeId(NodeType.SPOKE, i))
+                    collector.collect(message)
+                  }
+                case _ => println("Something went wrong while updating the predictors.")
+              }
+              counter = 0
+            } else counter += 1
+          }
+        }
+      ).name("ModelUpdates")
+
+    /** Partitioning the prediction data along with the control messages to the predictors. */
+    val predictionDataBlocks: ConnectedStreams[DataInstance, ControlMessage] = forecastingSource
+      .connect(validRequest
+        .filter(x => x.getRequest.getRequest != "Query")
+        .partitionCustom(random_partitioner, (x: ControlMessage) => x.destination.getNodeId)
+        .union(
+          modelUpdates.partitionCustom(random_partitioner, (x: ControlMessage) => x.destination.getNodeId)
+        ))
+
+    /** The parallel prediction procedure happens here. */
+    val predictionStream: DataStream[SpokeMessage] = predictionDataBlocks
+      .process(new FlinkPredictor[MLNodeGenerator])
+      .name("MLPredictor")
 
 
     //////////////////////////////////////////////// Sinks /////////////////////////////////////////////////////////////
 
+
+    /** A Kafka sink for the predictions. */
+    predictionStream.getSideOutput(predictions)
+      .map(x => x.toString)
+      .addSink(new FlinkKafkaProducer[String](
+        params.get("predictionsAddr", "localhost:9092"), // broker list
+        params.get("predictionsTopic", "predictions"), // target topic
+        new SimpleStringSchema()))
+      .name("PredictionsSink")
 
     /** A Kafka Sink for the query responses. */
     worker.getSideOutput(queryResponse)

@@ -7,14 +7,12 @@ import BipartiteTopologyAPI.operations.RemoteCallIdentifier
 import BipartiteTopologyAPI.sites.{NetworkDescriptor, NodeId, NodeType}
 import ControlAPI._
 import omldm.messages.{HubMessage, SpokeMessage}
-import omldm.OML_Job.queryResponse
+import omldm.OML_Job.{predictions, queryResponse}
 import org.apache.flink.streaming.api.functions.KeyedProcessFunction
 import org.apache.flink.streaming.api.functions.co.CoProcessFunction
 import org.apache.flink.util.Collector
 
 import scala.collection.JavaConverters._
-import scala.collection.immutable.HashMap
-import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
 
 case class FlinkNetwork[InMsg <: Serializable, CtrlMsg <: Serializable, OutMsg <: Serializable]
@@ -50,9 +48,15 @@ case class FlinkNetwork[InMsg <: Serializable, CtrlMsg <: Serializable, OutMsg <
       case null =>
         nodeType match {
           case NodeType.SPOKE =>
-            context.output(queryResponse, message.asInstanceOf[Array[Any]](0).asInstanceOf[QueryResponse])
+            message.asInstanceOf[Array[Any]](0) match {
+              case qResp: QueryResponse => context.output(queryResponse, qResp)
+              case pred: Prediction => context.output(predictions, pred)
+            }
           case NodeType.HUB =>
-            keyedContext.output(queryResponse, message.asInstanceOf[Array[Any]](0).asInstanceOf[QueryResponse])
+            message.asInstanceOf[Array[Any]](0) match {
+              case qResp: QueryResponse => keyedContext.output(queryResponse, qResp)
+              case pred: Prediction => keyedContext.output(predictions, pred)
+            }
         }
       case dest: NodeId =>
         nodeType match {

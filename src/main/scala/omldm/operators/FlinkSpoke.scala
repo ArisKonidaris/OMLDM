@@ -44,14 +44,14 @@ class FlinkSpoke[G <: NodeGenerator](implicit man: Manifest[G])
   Random.setSeed(25)
 
   /** The process for the fitting phase of the learners.
-    *
-    * The new data point is either fitted directly to the learner, buffered if
-    * the workers waits for the response of the parameter server or used as a
-    * test point for testing the performance of the model.
-    *
-    * @param data A data point for training.
-    * @param out  The process collector.
-    */
+   *
+   * The new data point is either fitted directly to the learner, buffered if
+   * the workers waits for the response of the parameter server or used as a
+   * test point for testing the performance of the model.
+   *
+   * @param data A data point for training.
+   * @param out  The process collector.
+   */
   override def processElement1(data: Point,
                                ctx: CoProcessFunction[Point, ControlMessage, SpokeMessage]#Context,
                                out: Collector[SpokeMessage]): Unit = {
@@ -76,7 +76,6 @@ class FlinkSpoke[G <: NodeGenerator](implicit man: Manifest[G])
       } else for ((_, node: Node) <- state) node.receiveTuple(Array[Any](data))
       count += 1
       if (count == 10) count = 0
-//      checkScore()
     } else {
       if (test_set.nonEmpty) {
         test_set.append(data.asInstanceOf[Point]) match {
@@ -92,13 +91,13 @@ class FlinkSpoke[G <: NodeGenerator](implicit man: Manifest[G])
   }
 
   /** The process function of the control stream.
-    *
-    * The control stream are the parameter server messages
-    * and the User's control mechanisms.
-    *
-    * @param message The control message
-    * @param out     The process function collector
-    */
+   *
+   * The control stream are the parameter server messages
+   * and the User's control mechanisms.
+   *
+   * @param message The control message
+   * @param out     The process function collector
+   */
   def processElement2(message: ControlMessage,
                       ctx: CoProcessFunction[Point, ControlMessage, SpokeMessage]#Context,
                       out: Collector[SpokeMessage]): Unit = {
@@ -114,7 +113,6 @@ class FlinkSpoke[G <: NodeGenerator](implicit man: Manifest[G])
               state(network).receiveMsg(source, rpc, data)
               for ((net: Int, node: Node) <- state) if (net != network) node.toggle()
             }
-//            if (getRuntimeContext.getIndexOfThisSubtask == 0) checkScore()
 
           case null =>
             request match {
@@ -168,36 +166,39 @@ class FlinkSpoke[G <: NodeGenerator](implicit man: Manifest[G])
   }
 
   /** Snapshot operation.
-    *
-    * Takes a snapshot of the operator when
-    * a checkpoint has to be performed.
-    *
-    * @param context Flink's FunctionSnapshotContext
-    */
+   *
+   * Takes a snapshot of the operator when
+   * a checkpoint has to be performed.
+   *
+   * @param context Flink's FunctionSnapshotContext.
+   */
   override def snapshotState(context: FunctionSnapshotContext): Unit = {
 
-    // ======================================= Snapshot the test set ===================================================
+    // ======================================== Snapshot the test set ==================================================
 
     if (test_set != null) {
       saved_test_set.clear()
       saved_test_set add test_set
     }
 
-    // ==================================== Snapshot the network nodes =================================================
+    // ================================ Snapshot the network nodes and the cache =======================================
+
     nodes.clear()
     nodes add state
+    saved_cache.clear()
+    saved_cache add cache
 
   }
 
 
   /** Operator initializer method.
-    *
-    * Is called every time the user-defined function is initialized,
-    * be that when the function is first initialized or be that when
-    * the function is actually recovering from an earlier checkpoint.
-    *
-    * @param context Flink's FunctionSnapshotContext
-    */
+   *
+   * Is called every time the user-defined function is initialized,
+   * be that when the function is first initialized or be that when
+   * the function is actually recovering from an earlier checkpoint.
+   *
+   * @param context Flink's FunctionSnapshotContext.
+   */
   override def initializeState(context: FunctionInitializationContext): Unit = {
 
     nodes = context.getOperatorStateStore.getListState(
