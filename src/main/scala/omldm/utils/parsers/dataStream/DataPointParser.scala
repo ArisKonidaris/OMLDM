@@ -16,7 +16,7 @@ class DataPointParser() extends RichFlatMapFunction[DataInstance, Point] {
   override def flatMap(input: DataInstance, collector: Collector[Point]): Unit = {
 
     // TODO: Remove this line after the implementation of ML methods that use Discrete Features.
-    if (input.getNumericFeatures == null || input.getDiscreteFeatures != null || input.getCategoricalFeatures != null)
+    if (input.getNumericalFeatures == null || input.getDiscreteFeatures != null || input.getCategoricalFeatures != null)
       return
 
     {
@@ -24,10 +24,10 @@ class DataPointParser() extends RichFlatMapFunction[DataInstance, Point] {
 
         val features: (Vector, Vector, Array[String]) = {
           (
-            if (input.getNumericFeatures == null)
+            if (input.getNumericalFeatures == null)
               DenseVector()
             else
-              DenseVector(input.getNumericFeatures.asInstanceOf[java.util.List[Double]].asScala.toArray),
+              DenseVector(input.getNumericalFeatures.asInstanceOf[java.util.List[Double]].asScala.toArray),
             if (input.getDiscreteFeatures == null)
               DenseVector()
             else

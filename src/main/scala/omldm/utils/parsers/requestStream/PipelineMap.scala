@@ -59,7 +59,7 @@ class PipelineMap() extends RichFlatMapFunction[Request, ControlMessage] {
 
   object ValidLists {
     val preprocessors: List[String] = List("PolynomialFeatures", "StandardScaler")
-    val learners: List[String] = List("PA", "regressorPA", "ORR")
+    val learners: List[String] = List("PA", "regressorPA", "ORR", "SVM", "MultiClassPA", "KMeans")
   }
 
 }

@@ -2,7 +2,7 @@ package omldm.utils.parsers
 
 import ControlAPI.DataInstance
 import org.apache.flink.api.common.functions.RichFlatMapFunction
-import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.ObjectMapper
 import org.apache.flink.util.Collector
 
 case class DataInstanceParser() extends RichFlatMapFunction[String, DataInstance] {
