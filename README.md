@@ -5,7 +5,7 @@ Distributed High Scale Online Machine Learning via Apache Flink
 ## Installing
 Fist clone the following maven project:\
 Control: https://github.com/ArisKonidaris/Control.git \
-BipartiteTopology: https://github.com/ArisKonidaris/BipartiteTopology.git
+BipartiteTopology: https://github.com/ArisKonidaris/BipartiteTopology.git \
 OnlineMachineLearning: https://github.com/ArisKonidaris/OnlineMachineLearning.git
 
 Install the Maven projects in the aforementioned order:
