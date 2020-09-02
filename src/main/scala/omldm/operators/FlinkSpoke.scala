@@ -122,10 +122,11 @@ class FlinkSpoke[G <: NodeGenerator](implicit man: Manifest[G])
                   case "Create" =>
                     if (!state.contains(network)) {
                       val hubParallelism: Int = {
-                        if (req.getTraining_configuration.containsKey("HubParallelism"))
-                          req.getTraining_configuration.get("HubParallelism").asInstanceOf[Int]
-                        else
-                          1
+                        try {
+                          req.getTraining_configuration.getOrDefault("HubParallelism", "1").asInstanceOf[Int]
+                        } catch {
+                          case _: Throwable => 1
+                        }
                       }
                       val flinkNetwork = FlinkNetwork[Point, ControlMessage, SpokeMessage](
                         NodeType.SPOKE,

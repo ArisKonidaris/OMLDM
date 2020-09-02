@@ -13,7 +13,6 @@ Install the Maven projects in the aforementioned order:
 $ mvn clean install
 ```
 
-
 ## Getting started
 After the installation of the required Maven projects follow the instuctions below:
 
