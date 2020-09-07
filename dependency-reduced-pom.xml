@@ -38,7 +38,7 @@
               </filters>
               <transformers>
                 <transformer>
-                  <mainClass>omldm.OML_Job</mainClass>
+                  <mainClass>omldm.OMLDM_Job</mainClass>
                 </transformer>
               </transformers>
             </configuration>

@@ -68,7 +68,6 @@ class FlinkPredictor[G <: NodeGenerator](implicit man: Manifest[G])
                       out: Collector[SpokeMessage]): Unit = {
     message match {
       case ControlMessage(network, operation, source, destination, data, request) =>
-        checkId(destination.getNodeId)
         collector = out
         context = ctx
 

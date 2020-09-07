@@ -2,36 +2,33 @@ package omldm
 
 import java.util.Properties
 
-import BipartiteTopologyAPI.operations.{CallType, RemoteCallIdentifier}
+import BipartiteTopologyAPI.operations.CallType
 import BipartiteTopologyAPI.sites.{NodeId, NodeType}
 import ControlAPI.{DataInstance, Prediction, QueryResponse, Request}
 import mlAPI.math.Point
 import mlAPI.parameters.ParameterDescriptor
 import omldm.messages.{ControlMessage, HubMessage, SpokeMessage}
 import omldm.operators.{FlinkHub, FlinkPredictor, FlinkSpoke}
+import omldm.utils.{Checkpointing, DefaultJobParameters}
 import omldm.utils.generators.MLNodeGenerator
+import omldm.utils.parsers.{DataInstanceParser, RequestParser}
 import omldm.utils.parsers.dataStream.DataPointParser
 import omldm.utils.parsers.requestStream.PipelineMap
-import omldm.utils.parsers.{DataInstanceParser, RequestParser}
 import omldm.utils.partitioners.random_partitioner
-import omldm.utils.{Checkpointing, DefaultJobParameters}
-import org.apache.flink.api.common.functions.{RichFlatMapFunction, RichMapFunction}
+import org.apache.flink.api.common.functions.RichFlatMapFunction
 import org.apache.flink.api.common.serialization.{SimpleStringSchema, TypeInformationSerializationSchema}
 import org.apache.flink.api.common.state.{ValueState, ValueStateDescriptor}
 import org.apache.flink.api.java.utils.ParameterTool
 import org.apache.flink.configuration.Configuration
 import org.apache.flink.streaming.api.TimeCharacteristic
 import org.apache.flink.streaming.api.functions.KeyedProcessFunction
-import org.apache.flink.streaming.api.scala._
+import org.apache.flink.streaming.api.scala.{ConnectedStreams, DataStream, OutputTag, StreamExecutionEnvironment, createTypeInformation}
 import org.apache.flink.streaming.connectors.kafka.{FlinkKafkaConsumer, FlinkKafkaProducer}
 import org.apache.flink.util.Collector
 
-/**
-  * Interactive Online Machine Learning Flink Streaming Job.
-  */
-object OML_Job {
+object OMLDM_Job {
 
-//  val trainingTime: OutputTag[Any] = OutputTag[Any]("trainingTime")
+  val trainingTime: OutputTag[Any] = OutputTag[Any]("trainingTime")
   val queryResponse: OutputTag[QueryResponse] = OutputTag[QueryResponse]("QueryResponse")
   val predictions: OutputTag[Prediction] = OutputTag[Prediction]("predictionStream")
 
@@ -143,49 +140,49 @@ object OML_Job {
       .process(new FlinkHub[MLNodeGenerator](params.get("test", DefaultJobParameters.defaultTestParameter).toBoolean))
       .name("FlinkHub")
 
-//    coordinator.getSideOutput(trainingTime)
-//      .keyBy(_ => 0)
-//      .process(new KeyedProcessFunction[Int, Any, Long] {
-//
-//        private val timeout: Long = 10000 // The maximum waiting period.
-//        private var start: ValueState[Long] = _
-//        private var end: ValueState[Long] = _
-//        private var timestampState: ValueState[Long] = _ // The timestamp of the latest message.
-//
-//        override def open(parameters: Configuration): Unit = {
-//          start = getRuntimeContext.getState(new ValueStateDescriptor[Long]("startTimestamp", classOf[Long]))
-//          end = getRuntimeContext.getState(new ValueStateDescriptor[Long]("endTimestamp", classOf[Long]))
-//          timestampState = getRuntimeContext.getState(new ValueStateDescriptor[Long]("timestampState", classOf[Long]))
-//        }
-//
-//        override def processElement(messageTimestamp: Any,
-//                                    ctx: KeyedProcessFunction[Int, Any, Long]#Context, collector: Collector[Long])
-//        : Unit = {
-//          if (start.value() == null)
-//            start.update(messageTimestamp.asInstanceOf[Long])
-//          else
-//            end.update(messageTimestamp.asInstanceOf[Long])
-//
-//          // Set the state's timestamp to the record's assigned timestamp.
-//          val tempTime = ctx.timestamp()
-//          timestampState.update(tempTime)
-//
-//          // Schedule the next timer timeout ms from the current record time.
-//          ctx.timerService.registerEventTimeTimer(tempTime + timeout)
-//
-//        }
-//
-//        override def onTimer(timestamp: Long,
-//                             ctx: KeyedProcessFunction[Int, Any, Long]#OnTimerContext, out: Collector[Long])
-//        : Unit = {
-//          val stateTime = timestampState.value
-//          // Check if this is an outdated timer or the latest timer.
-//          if (timestamp == stateTime + timeout)
-//            throw new Exception("End of Job.\nTest time: " + (end.value() - start.value()))
-//
-//        }
-//
-//      })
+    coordinator.getSideOutput(trainingTime)
+      .keyBy(_ => 0)
+      .process(new KeyedProcessFunction[Int, Any, Long] {
+
+        private val timeout: Long = 15000 // The maximum waiting period.
+        private var start: ValueState[Long] = _
+        private var end: ValueState[Long] = _
+        private var timestampState: ValueState[Long] = _ // The timestamp of the latest message.
+
+        override def open(parameters: Configuration): Unit = {
+          start = getRuntimeContext.getState(new ValueStateDescriptor[Long]("startTimestamp", classOf[Long]))
+          end = getRuntimeContext.getState(new ValueStateDescriptor[Long]("endTimestamp", classOf[Long]))
+          timestampState = getRuntimeContext.getState(new ValueStateDescriptor[Long]("timestampState", classOf[Long]))
+        }
+
+        override def processElement(messageTimestamp: Any,
+                                    ctx: KeyedProcessFunction[Int, Any, Long]#Context, collector: Collector[Long])
+        : Unit = {
+          if (start.value() == null)
+            start.update(messageTimestamp.asInstanceOf[Long])
+          else
+            end.update(messageTimestamp.asInstanceOf[Long])
+
+          // Set the state's timestamp to the record's assigned timestamp.
+          val tempTime = ctx.timestamp()
+          timestampState.update(tempTime)
+
+          // Schedule the next timer timeout ms from the current record time.
+          ctx.timerService.registerEventTimeTimer(tempTime + timeout)
+
+        }
+
+        override def onTimer(timestamp: Long,
+                             ctx: KeyedProcessFunction[Int, Any, Long]#OnTimerContext, out: Collector[Long])
+        : Unit = {
+          val stateTime = timestampState.value
+          // Check if this is an outdated timer or the latest timer.
+          if (timestamp == stateTime + timeout)
+            throw new Exception("End of Job.\nTest time: " + (end.value() - start.value()))
+
+        }
+
+      })
 
     /** The Kafka iteration for emulating parameter server messages */
     coordinator
@@ -200,51 +197,32 @@ object OML_Job {
       ))
       .name("FeedbackLoop")
 
-    //    coordinator
-    //      .addSink(new FlinkKafkaProducer[HubMessage](
-    //        params.get("psMessagesAddr", "localhost:9092"), // broker list
-    //        params.get("psMessagesTopic", "psMessages"), // target topic
-    //        new TypeInformationSerializationSchema(createTypeInformation[HubMessage], env.getConfig)))
-    //      .name("FeedbackLoop")
-
 
     ////////////////////////////////////////////////// Predicting //////////////////////////////////////////////////////
 
-    coordinator.filter(
-      {
-        msg: HubMessage =>
-          if ((msg.destinations.length == 0 && msg.destinations.head.getNodeId == 0) || msg.destinations.length > 0)
-            true
-          else
-            false
-      }
-    ).flatMap(
-      new RichFlatMapFunction[HubMessage, ControlMessage] {
-        override def flatMap(in: HubMessage, out: Collector[ControlMessage]): Unit = {
-          for (i <- 0 until getRuntimeContext.getExecutionConfig.getParallelism) {
-            in.destinations.head.setNodeId(i)
-            out.collect(ControlMessage(in.getNetworkId, in.operations.head, in.getSource, in.destinations.head, in.getData, in.getRequest))
-          }
-        }
-      }
-    ).keyBy(x => x.destination.getNodeId)
 
-    val modelUpdates: DataStream[ControlMessage] =
-      coordinatorMessages.filter({
-        msg: ControlMessage =>
-          msg.getOperation match {
-            case _: RemoteCallIdentifier =>
-              if (msg.getDestination.getNodeId == 0 && msg.data.isInstanceOf[ParameterDescriptor])
-                true
-              else
-                false
-            case null => false
-          }
-      }).flatMap(
-        new RichFlatMapFunction[ControlMessage, ControlMessage] {
+    val modelUpdates: DataStream[ControlMessage] = coordinator
+      .filter(
+        {
+          msg: HubMessage =>
+            if ((msg.destinations.length == 0 && msg.destinations.head.getNodeId == 0) || msg.destinations.length > 0)
+              true
+            else
+              false
+        }
+      ).flatMap(
+        new RichFlatMapFunction[HubMessage, ControlMessage] {
           var counter: Int = 0
-          override def flatMap(message: ControlMessage, collector: Collector[ControlMessage]): Unit = {
+          override def flatMap(hMessage: HubMessage, collector: Collector[ControlMessage]): Unit = {
             if (counter == 5) {
+              val message = ControlMessage(
+                hMessage.getNetworkId,
+                hMessage.operations.head,
+                hMessage.getSource,
+                hMessage.destinations.head,
+                hMessage.getData,
+                hMessage.getRequest
+              )
               message.getOperation.setCallType(CallType.ONE_WAY)
               message.getData match {
                 case _: ParameterDescriptor =>
@@ -262,12 +240,22 @@ object OML_Job {
 
     /** Partitioning the prediction data along with the control messages to the predictors. */
     val predictionDataBlocks: ConnectedStreams[DataInstance, ControlMessage] = forecastingSource
+      .flatMap(
+        new RichFlatMapFunction[DataInstance, DataInstance] {
+          private var count: Long = 0
+          override def flatMap(in: DataInstance, collector: Collector[DataInstance]): Unit = {
+            in.setId(count)
+            collector.collect(in)
+            if (count == getRuntimeContext.getExecutionConfig.getParallelism - 1) count = 0 else count += 1
+          }
+        }
+      )
+      .keyBy(x => x.getId)
       .connect(validRequest
         .filter(x => x.getRequest.getRequest != "Query")
-        .partitionCustom(random_partitioner, (x: ControlMessage) => x.destination.getNodeId)
-        .union(
-          modelUpdates.partitionCustom(random_partitioner, (x: ControlMessage) => x.destination.getNodeId)
-        ))
+        .keyBy(x => x.destination.getNodeId)
+        .union(modelUpdates.keyBy(x => x.destination.getNodeId))
+      )
 
     /** The parallel prediction procedure happens here. */
     val predictionStream: DataStream[SpokeMessage] = predictionDataBlocks
@@ -303,5 +291,4 @@ object OML_Job {
     /** execute program */
     env.execute(params.get("jobName", DefaultJobParameters.defaultJobName))
   }
-
 }

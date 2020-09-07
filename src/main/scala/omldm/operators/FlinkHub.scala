@@ -3,6 +3,7 @@ package omldm.operators
 import BipartiteTopologyAPI.GenericWrapper
 import BipartiteTopologyAPI.sites.{NodeId, NodeType}
 import ControlAPI.Request
+import omldm.OMLDM_Job.trainingTime
 import omldm.messages.{HubMessage, SpokeMessage}
 import omldm.network.FlinkNetwork
 import omldm.nodes.hub.HubLogic
@@ -16,7 +17,7 @@ import org.apache.flink.util.Collector
 
 import scala.reflect.Manifest
 
-class FlinkHub[G <: NodeGenerator](implicit man: Manifest[G])
+class FlinkHub[G <: NodeGenerator](val test: Boolean)(implicit man: Manifest[G])
   extends HubLogic[SpokeMessage, HubMessage] {
 
   override protected var state: AggregatingState
@@ -56,6 +57,7 @@ class FlinkHub[G <: NodeGenerator](implicit man: Manifest[G])
             if (state.get == null) {
               cache.append(workerMessage)
             } else {
+              if(test) ctx.output(trainingTime, ctx.timestamp())
               if (!cache.isEmpty) {
                 while (cache.nonEmpty) {
                   val mess = cache.pop.get
@@ -66,6 +68,7 @@ class FlinkHub[G <: NodeGenerator](implicit man: Manifest[G])
             }
         }
     }
+
   }
 
   private def nodeFactory: NodeGenerator = man.runtimeClass.newInstance().asInstanceOf[NodeGenerator]
@@ -81,7 +84,7 @@ class FlinkHub[G <: NodeGenerator](implicit man: Manifest[G])
       networkId,
       getRuntimeContext.getExecutionConfig.getParallelism,
       if (request.getTraining_configuration.containsKey("HubParallelism"))
-        request.getTraining_configuration.get("HubParallelism").asInstanceOf[Int]
+        request.getTraining_configuration.get("HubParallelism").asInstanceOf[Double].toInt
       else 1
     )
 

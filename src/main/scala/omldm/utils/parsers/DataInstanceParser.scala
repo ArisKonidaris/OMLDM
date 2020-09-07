@@ -10,8 +10,12 @@ case class DataInstanceParser() extends RichFlatMapFunction[String, DataInstance
   private val mapper: ObjectMapper = new ObjectMapper()
 
   override def flatMap(record: String, collector: Collector[DataInstance]): Unit = {
-    val dataInstance = mapper.readValue(record, classOf[DataInstance])
-    if (dataInstance.isValid) collector.collect(dataInstance)
+    try {
+      val dataInstance = mapper.readValue(record, classOf[DataInstance])
+      if (dataInstance.isValid) collector.collect(dataInstance)
+    } catch {
+      case _: Throwable =>
+    }
   }
 
 }
