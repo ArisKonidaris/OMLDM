@@ -1,6 +1,7 @@
 package omldm
 
-import java.util.Properties
+import java.sql.Timestamp
+import java.util.{Optional, Properties}
 
 import BipartiteTopologyAPI.operations.CallType
 import BipartiteTopologyAPI.sites.{NodeId, NodeType}
@@ -11,6 +12,7 @@ import omldm.messages.{ControlMessage, HubMessage, SpokeMessage}
 import omldm.operators.{FlinkHub, FlinkPredictor, FlinkSpoke}
 import omldm.utils.{Checkpointing, DefaultJobParameters}
 import omldm.utils.generators.MLNodeGenerator
+import omldm.utils.kafkaPartitioners.FlinkHubMessagePartitioner
 import omldm.utils.parsers.{DataInstanceParser, RequestParser}
 import omldm.utils.parsers.dataStream.DataPointParser
 import omldm.utils.parsers.requestStream.PipelineMap
@@ -23,6 +25,7 @@ import org.apache.flink.configuration.Configuration
 import org.apache.flink.streaming.api.TimeCharacteristic
 import org.apache.flink.streaming.api.functions.KeyedProcessFunction
 import org.apache.flink.streaming.api.scala.{ConnectedStreams, DataStream, OutputTag, StreamExecutionEnvironment, createTypeInformation}
+import org.apache.flink.streaming.connectors.kafka.partitioner.FlinkKafkaPartitioner
 import org.apache.flink.streaming.connectors.kafka.{FlinkKafkaConsumer, FlinkKafkaProducer}
 import org.apache.flink.util.Collector
 
@@ -42,6 +45,7 @@ object OMLDM_Job {
   def main(args: Array[String]) {
 
     /** Set up the streaming execution environment */
+
     implicit val env: StreamExecutionEnvironment = StreamExecutionEnvironment.getExecutionEnvironment
     implicit val params: ParameterTool = ParameterTool.fromArgs(args)
 
@@ -158,10 +162,12 @@ object OMLDM_Job {
         override def processElement(messageTimestamp: Any,
                                     ctx: KeyedProcessFunction[Int, Any, Long]#Context, collector: Collector[Long])
         : Unit = {
-          if (start.value() == null)
+          if (start.value() == null) {
+            println("Starting test at time: " + new Timestamp(messageTimestamp.asInstanceOf[Long]).getTime)
             start.update(messageTimestamp.asInstanceOf[Long])
-          else
+          } else {
             end.update(messageTimestamp.asInstanceOf[Long])
+          }
 
           // Set the state's timestamp to the record's assigned timestamp.
           val tempTime = ctx.timestamp()
@@ -179,7 +185,6 @@ object OMLDM_Job {
           // Check if this is an outdated timer or the latest timer.
           if (timestamp == stateTime + timeout)
             throw new Exception("End of Job.\nTest time: " + (end.value() - start.value()))
-
         }
 
       })
@@ -189,11 +194,11 @@ object OMLDM_Job {
       .addSink(new FlinkKafkaProducer[HubMessage](
         params.get("psMessagesTopic", "psMessages"), // target topic
         new TypeInformationSerializationSchema(createTypeInformation[HubMessage], env.getConfig), // serializationSchema
+        createProperties("psMessagesAddr", "psMessagesConsumer"),
         {
-          val props = createProperties("psMessagesAddr", "psMessagesConsumer")
-          props.put("partitioner.class", "omldm.utils.kafkaPartitioners.HubMessagePartitioner")
-          props
-        }, // broker list & partitioner
+          val partitioner: Optional[FlinkKafkaPartitioner[HubMessage]] = Optional.of(new FlinkHubMessagePartitioner)
+          partitioner
+        }
       ))
       .name("FeedbackLoop")
 

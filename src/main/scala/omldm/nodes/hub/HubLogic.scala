@@ -16,9 +16,12 @@ import org.apache.flink.util.Collector
 abstract class HubLogic[InMsg <: Serializable, OutMsg <: Serializable]
   extends KeyedProcessFunction[String, InMsg, OutMsg]
     with Hub {
+
   protected var state: AggregatingState[
     (InMsg, KeyedProcessFunction[String, InMsg, OutMsg]#Context, Collector[OutMsg]),
     GenericWrapper
   ]
-  protected var cache: DataSet[InMsg] = new DataSet[InMsg](20000)
+
+  protected var cache: AggregatingState[InMsg, Option[InMsg]]
+
 }

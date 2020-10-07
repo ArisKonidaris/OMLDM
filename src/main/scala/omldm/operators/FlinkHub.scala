@@ -7,7 +7,7 @@ import omldm.OMLDM_Job.trainingTime
 import omldm.messages.{HubMessage, SpokeMessage}
 import omldm.network.FlinkNetwork
 import omldm.nodes.hub.HubLogic
-import omldm.state.{NodeAccumulator, NodeAggregateFunction}
+import omldm.state.{DataAggregateFunction, NodeAccumulator, NodeAggregateFunction, SpokeMessageAccumulator}
 import omldm.utils.generators.NodeGenerator
 import org.apache.flink.api.common.state._
 import org.apache.flink.configuration.Configuration
@@ -16,6 +16,7 @@ import org.apache.flink.streaming.api.scala.createTypeInformation
 import org.apache.flink.util.Collector
 
 import scala.reflect.Manifest
+import scala.util.control.Breaks.{break, breakable}
 
 class FlinkHub[G <: NodeGenerator](val test: Boolean)(implicit man: Manifest[G])
   extends HubLogic[SpokeMessage, HubMessage] {
@@ -26,6 +27,8 @@ class FlinkHub[G <: NodeGenerator](val test: Boolean)(implicit man: Manifest[G])
     GenericWrapper
     ] = _
 
+  override protected var cache: AggregatingState[SpokeMessage, Option[SpokeMessage]] = _
+
   override def open(parameters: Configuration): Unit = {
     state = getRuntimeContext.getAggregatingState[
       (SpokeMessage, KeyedProcessFunction[String, SpokeMessage, HubMessage]#Context, Collector[HubMessage]),
@@ -35,6 +38,13 @@ class FlinkHub[G <: NodeGenerator](val test: Boolean)(implicit man: Manifest[G])
         "state",
         new NodeAggregateFunction(),
         createTypeInformation[NodeAccumulator]))
+
+    cache = getRuntimeContext.getAggregatingState[SpokeMessage, SpokeMessageAccumulator, Option[SpokeMessage]](
+      new AggregatingStateDescriptor(
+        "cache",
+        new DataAggregateFunction(),
+        createTypeInformation[SpokeMessageAccumulator]))
+
   }
 
   override def processElement(workerMessage: SpokeMessage,
@@ -55,13 +65,15 @@ class FlinkHub[G <: NodeGenerator](val test: Boolean)(implicit man: Manifest[G])
             }
           case null =>
             if (state.get == null) {
-              cache.append(workerMessage)
+              cache add workerMessage
             } else {
               if(test) ctx.output(trainingTime, ctx.timestamp())
-              if (!cache.isEmpty) {
-                while (cache.nonEmpty) {
-                  val mess = cache.pop.get
-                  state add (mess, ctx, out)
+              breakable {
+                while(true) {
+                  cache.get() match {
+                    case Some(mess: SpokeMessage) => state add (mess, ctx, out)
+                    case None => break
+                  }
                 }
               }
               state add (workerMessage, ctx, out)

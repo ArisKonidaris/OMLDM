@@ -2,6 +2,7 @@ package omldm.state
 
 import BipartiteTopologyAPI.GenericWrapper
 import breeze.linalg.{DenseVector => BreezeDenseVector}
+import mlAPI.dataBuffers.DataSet
 import mlAPI.math.Point
 import mlAPI.parameters.{VectorBias, LearningParameters => lr_params}
 import omldm.messages.{HubMessage, SpokeMessage}
@@ -29,11 +30,35 @@ class DataListAccumulator(dataSet: ListBuffer[Point]) {
   def this() = this(ListBuffer[Point]())
 }
 
+class SpokeMessageAccumulator(val dataSet: DataSet[SpokeMessage]) {
+  def this() = this(new DataSet[SpokeMessage](20000))
+}
+
 class NodeAccumulator(node: GenericWrapper) {
 
   def this() = this(null)
 
   def getNodeWrapper: GenericWrapper = node
+}
+
+class DataAggregateFunction(max_size: Int)
+  extends AggregateFunction[SpokeMessage, SpokeMessageAccumulator, Option[SpokeMessage]] {
+
+  def this() = this(20000)
+
+  override def createAccumulator(): SpokeMessageAccumulator = new SpokeMessageAccumulator(new DataSet[SpokeMessage](max_size))
+
+  override def add(in: SpokeMessage, acc: SpokeMessageAccumulator): SpokeMessageAccumulator = {
+    acc.dataSet.append(in)
+    acc
+  }
+
+  override def getResult(acc: SpokeMessageAccumulator): Option[SpokeMessage] = acc.dataSet.pop
+
+  override def merge(acc1: SpokeMessageAccumulator, acc2: SpokeMessageAccumulator): SpokeMessageAccumulator = {
+    acc1.dataSet.merge(Array(acc2.dataSet))
+    acc1
+  }
 }
 
 class NodeAggregateFunction()
