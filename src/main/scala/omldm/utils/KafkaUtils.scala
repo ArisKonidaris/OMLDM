@@ -10,6 +10,13 @@ import org.apache.flink.streaming.connectors.kafka.{FlinkKafkaConsumer, FlinkKaf
 
 object KafkaUtils {
 
+  def createProperties(brokerList: String, group_id: String)(implicit params: ParameterTool): Properties = {
+    val properties: Properties = new Properties()
+    properties.setProperty("bootstrap.servers", params.get(brokerList, "localhost:9092"))
+    properties.setProperty("group.flink_worker_id", group_id)
+    properties
+  }
+
   def KafkaStringConsumer(topic: String)
                          (implicit params: ParameterTool, env: StreamExecutionEnvironment)
   : FlinkKafkaConsumerBase[String] = {
@@ -42,13 +49,6 @@ object KafkaUtils {
     new FlinkKafkaProducer[T](params.get(topic + "Addr", "localhost:9092"), // broker list
       topic, // target topic
       new TypeInformationSerializationSchema(createTypeInformation[T], env.getConfig))
-  }
-
-  def createProperties(brokerList: String, group_id: String)(implicit params: ParameterTool): Properties = {
-    val properties: Properties = new Properties()
-    properties.setProperty("bootstrap.servers", params.get(brokerList, "localhost:9092"))
-    properties.setProperty("group.flink_worker_id", group_id)
-    properties
   }
 
 }
