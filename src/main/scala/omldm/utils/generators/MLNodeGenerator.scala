@@ -2,9 +2,9 @@ package omldm.utils.generators
 
 import BipartiteTopologyAPI.NodeInstance
 import ControlAPI.Request
-import mlAPI.mlParameterServers.parameterServers.{AsynchronousParameterServer, SynchronousParameterServer}
+import mlAPI.mlParameterServers.{AsynchronousParameterServer, FGMParameterServer, SynchronousParameterServer}
 import mlAPI.mlworkers.MLPredictor
-import mlAPI.mlworkers.worker.MLPeriodicWorker
+import mlAPI.mlworkers.worker.{AsynchronousWorker, FGMWorker, SynchronousWorker}
 
 import scala.collection.mutable
 import scala.collection.JavaConverters._
@@ -16,17 +16,18 @@ case class MLNodeGenerator() extends NodeGenerator {
       val config: mutable.Map[String, AnyRef] = request.getTraining_configuration.asScala
       if (config.contains("protocol"))
         try {
-          config.get("protocol").asInstanceOf[String] match {
-            case "Asynchronous" => MLPeriodicWorker().configureWorker(request)
-            case "Synchronous" => MLPeriodicWorker().configureWorker(request)
-            case "DynamicAveraging" => MLPeriodicWorker().configureWorker(request)
-            case "FGMAveraging" => MLPeriodicWorker().configureWorker(request)
-            case _ => MLPeriodicWorker().configureWorker(request)
+          config.get("protocol").asInstanceOf[Option[String]] match {
+            case Some("Asynchronous") => AsynchronousWorker().configureWorker(request)
+            case Some("Synchronous") => SynchronousWorker().configureWorker(request)
+            case Some("DynamicAveraging") => AsynchronousWorker().configureWorker(request)
+            case Some("FGM") => FGMWorker().configureWorker(request)
+            case Some(_) => AsynchronousWorker().configureWorker(request)
           }
         } catch {
-            case _: Throwable => MLPeriodicWorker().configureWorker(request)
+            case e: Throwable => AsynchronousWorker().configureWorker(request)
         }
-      else MLPeriodicWorker().configureWorker(request)
+      else
+        AsynchronousWorker().configureWorker(request)
     } catch {
       case e: Exception => throw new RuntimeException("Something went wrong while creating a new ML Flink Spoke.", e)
     }
@@ -37,17 +38,18 @@ case class MLNodeGenerator() extends NodeGenerator {
       val config: mutable.Map[String, AnyRef] = request.getTraining_configuration.asScala
       if (config.contains("protocol"))
         try {
-          config.get("protocol").asInstanceOf[String] match {
-            case "Asynchronous" => AsynchronousParameterServer().configureParameterServer(request)
-            case "Synchronous" => SynchronousParameterServer().configureParameterServer(request)
-            case "DynamicAveraging" => AsynchronousParameterServer().configureParameterServer(request)
-            case "FGMAveraging" => AsynchronousParameterServer().configureParameterServer(request)
-            case _ => AsynchronousParameterServer().configureParameterServer(request)
+          config.get("protocol").asInstanceOf[Option[String]] match {
+            case Some("Asynchronous") => AsynchronousParameterServer().configureParameterServer(request)
+            case Some("Synchronous") => SynchronousParameterServer().configureParameterServer(request)
+            case Some("DynamicAveraging") => AsynchronousParameterServer().configureParameterServer(request)
+            case Some("FGM") => FGMParameterServer().configureParameterServer(request)
+            case Some(_) => AsynchronousParameterServer().configureParameterServer(request)
           }
         } catch {
           case _: Throwable => AsynchronousParameterServer().configureParameterServer(request)
         }
-      else AsynchronousParameterServer().configureParameterServer(request)
+      else
+        AsynchronousParameterServer().configureParameterServer(request)
     } catch {
       case e: Exception => throw new RuntimeException("Something went wrong while creating a new ML Flink Hub.", e)
     }

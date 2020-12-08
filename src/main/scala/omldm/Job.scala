@@ -141,13 +141,12 @@ object Job {
     ////////////////////////////////////////////// Building the Job ////////////////////////////////////////////////////
 
 
-    if (mode.equals("training")) {
+    if (mode.equals("training"))
       builtTrainingJob(env, validRequest, psMessages)
-    } else if (mode.equals("prediction")) {
+    else if (mode.equals("prediction"))
       builtPredictionJob(env, validRequest, psMessages)
-    } else {
+    else
       builtPredictionJob(env, validRequest, builtTrainingJob(env, validRequest, psMessages)._2)
-    }
 
     //////////////////////////////////////////// Execute OML Job ///////////////////////////////////////////////////////
 

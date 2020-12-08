@@ -70,9 +70,9 @@ class FlinkHub[G <: NodeGenerator](val test: Boolean)(implicit man: Manifest[G])
               if(test) ctx.output(trainingTime, ctx.timestamp())
               breakable {
                 while(true) {
-                  cache.get() match {
+                  cache.get match {
                     case Some(mess: SpokeMessage) => state add (mess, ctx, out)
-                    case None => break
+                    case _ => break
                   }
                 }
               }

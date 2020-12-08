@@ -1,7 +1,7 @@
 package omldm.utils.parsers.requestStream
 
 import BipartiteTopologyAPI.sites.NodeId
-import ControlAPI.{Preprocessor, Request}
+import ControlAPI.{PreprocessorPOJO, Request}
 import omldm.messages.ControlMessage
 import org.apache.flink.api.common.functions.RichFlatMapFunction
 import org.apache.flink.api.common.state.{MapState, MapStateDescriptor}
@@ -22,7 +22,7 @@ class PipelineMap() extends RichFlatMapFunction[Request, ControlMessage] {
     if (request.isValid) {
       if (request.getLearner != null && !ValidLists.learners.contains(request.getLearner.getName)) return
       if (request.getPreprocessors != null &&
-        !(for (pp: Preprocessor <- request.getPreprocessors.asScala.toList)
+        !(for (pp: PreprocessorPOJO <- request.getPreprocessors.asScala.toList)
           yield ValidLists.preprocessors.contains(pp.getName)
           ).reduce((x,y) => x && y)
       ) return
