@@ -5,7 +5,7 @@ object DefaultJobParameters {
   val defaultParallelism: String = "16"
   val defaultInputFile: String = "hdfs://clu01.softnet.tuc.gr:8020/user/vkonidaris/lin_class_mil_e10.txt"
   val defaultOutputFile: String = "hdfs://clu01.softnet.tuc.gr:8020/user/vkonidaris/output"
-  val defaultTestParameter: String = "true"
+  val defaultTestParameter: String = "false"
   val mode: String = "training"
 //  val mode: String = "training&prediction"
 }

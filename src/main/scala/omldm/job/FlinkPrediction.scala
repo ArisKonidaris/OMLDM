@@ -52,7 +52,7 @@ case class FlinkPrediction(env: StreamExecutionEnvironment,
                 message.setDestination(new NodeId(NodeType.SPOKE, i))
                 collector.collect(message)
               }
-            case _ => println("Something went wrong while updating the predictors.")
+            case _ =>
           }
           counter = 0
         } else counter += 1
