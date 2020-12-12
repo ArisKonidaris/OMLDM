@@ -95,9 +95,11 @@ case class FlinkTraining(env: StreamExecutionEnvironment,
       : Unit = {
         if (start.value() == null) {
           println("Starting test at time: " + new Timestamp(messageTimestamp.asInstanceOf[Long]).getTime)
-          start.update(messageTimestamp.asInstanceOf[Long])
+//          start.update(messageTimestamp.asInstanceOf[Long])
+          start.update(ctx.timestamp())
         } else {
-          end.update(messageTimestamp.asInstanceOf[Long])
+//          end.update(messageTimestamp.asInstanceOf[Long])
+          end.update(ctx.timestamp())
         }
 
         // Set the state's timestamp to the record's assigned timestamp.
@@ -112,9 +114,8 @@ case class FlinkTraining(env: StreamExecutionEnvironment,
       override def onTimer(timestamp: Long,
                            ctx: KeyedProcessFunction[Int, Any, Long]#OnTimerContext, out: Collector[Long])
       : Unit = {
-        val stateTime = timestampState.value
         // Check if this is an outdated timer or the latest timer.
-        if (timestamp == stateTime + timeout)
+        if (timestamp == timestampState.value + timeout)
           throw new Exception("End of Job.\nTest time: " + (end.value() - start.value()))
       }
 

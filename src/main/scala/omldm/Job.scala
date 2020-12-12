@@ -1,7 +1,6 @@
 package omldm
 
 import java.util.Optional
-
 import ControlAPI.{DataInstance, Prediction, QueryResponse, Request}
 import mlAPI.math.Point
 import omldm.job.{FlinkPrediction, FlinkTraining}
@@ -18,6 +17,8 @@ import org.apache.flink.streaming.api.TimeCharacteristic
 import org.apache.flink.streaming.api.scala.{DataStream, StreamExecutionEnvironment, createTypeInformation}
 import org.apache.flink.streaming.connectors.kafka.partitioner.FlinkKafkaPartitioner
 import org.apache.flink.streaming.connectors.kafka.{FlinkKafkaConsumer, FlinkKafkaProducer}
+
+import scala.util.Random
 
 object Job {
 
