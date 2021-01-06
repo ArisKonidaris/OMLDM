@@ -1,10 +1,9 @@
 package omldm.messages
 
 import java.io.Serializable
-
 import BipartiteTopologyAPI.operations.RemoteCallIdentifier
 import BipartiteTopologyAPI.sites.NodeId
-import ControlAPI.Request
+import ControlAPI.{CountableSerial, Request}
 
 /** A message send by a Spoke node to a Hub node in the Flink Bipartite Network topology workflow.
   *
@@ -38,7 +37,7 @@ case class SpokeMessage(var networkId: Int,
 
   def setDestination(destination: NodeId): Unit = this.destination = destination
 
-  def setData(data: Serializable): Unit = this.data = data
+  def setData(data: CountableSerial): Unit = this.data = data
 
   def setRequest(request: Request): Unit = this.request = request
 

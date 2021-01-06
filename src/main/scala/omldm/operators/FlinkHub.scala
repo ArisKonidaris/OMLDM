@@ -2,8 +2,10 @@ package omldm.operators
 
 import BipartiteTopologyAPI.GenericWrapper
 import BipartiteTopologyAPI.sites.{NodeId, NodeType}
-import ControlAPI.Request
-import omldm.OMLDM_Job.trainingTime
+import omldm.Job.trainingStats
+import ControlAPI.{Request, Statistics}
+import mlAPI.mlParameterServers.MLParameterServer
+import mlAPI.protocols.ProtocolStatistics
 import omldm.messages.{HubMessage, SpokeMessage}
 import omldm.network.FlinkNetwork
 import omldm.nodes.hub.HubLogic
@@ -23,8 +25,8 @@ class FlinkHub[G <: NodeGenerator](val test: Boolean)(implicit man: Manifest[G])
 
   override protected var state: AggregatingState
     [
-    (SpokeMessage, KeyedProcessFunction[String, SpokeMessage, HubMessage]#Context, Collector[HubMessage]),
-    GenericWrapper
+      (SpokeMessage, KeyedProcessFunction[String, SpokeMessage, HubMessage]#Context, Collector[HubMessage]),
+      GenericWrapper
     ] = _
 
   override protected var cache: AggregatingState[SpokeMessage, Option[SpokeMessage]] = _
@@ -67,16 +69,34 @@ class FlinkHub[G <: NodeGenerator](val test: Boolean)(implicit man: Manifest[G])
             if (state.get == null) {
               cache add workerMessage
             } else {
-              if(test) ctx.output(trainingTime, ctx.timestamp())
               breakable {
-                while(true) {
+                while (true) {
                   cache.get match {
-                    case Some(mess: SpokeMessage) => state add (mess, ctx, out)
+                    case Some(mess: SpokeMessage) =>
+                      state add(mess, ctx, out)
+                      println("Status: " + state.get().getNode.asInstanceOf[MLParameterServer[_, _]].getNumberOfFittedData)
                     case _ => break
                   }
                 }
               }
-              state add (workerMessage, ctx, out)
+              state add(workerMessage, ctx, out)
+              if (test) {
+                println("Status: " + state.get().getNode.asInstanceOf[MLParameterServer[_, _]].getNumberOfFittedData)
+//                println(state.get().getNode.asInstanceOf[MLParameterServer[_, _]].protocolStatistics)
+                val mlpId: String = state.get().getNetwork.describe().getNetworkId + "_" + ctx.getCurrentKey
+                val mlpStats = {
+                  val s: ProtocolStatistics = state.get().getNode.asInstanceOf[MLParameterServer[_, _]].protocolStatistics
+                  new Statistics(
+                    mlpId.split("_")(0).toInt,
+                    s.getProtocol,
+                    s.getModelsShipped,
+                    s.getBytesShipped,
+                    s.getNumOfBlocks,
+                    state.get().getNode.asInstanceOf[MLParameterServer[_, _]].getNumberOfFittedData
+                  )
+                }
+                ctx.output(trainingStats, (mlpId, mlpStats))
+              }
             }
         }
     }
@@ -89,19 +109,31 @@ class FlinkHub[G <: NodeGenerator](val test: Boolean)(implicit man: Manifest[G])
                           ctx: KeyedProcessFunction[String, SpokeMessage, HubMessage]#Context,
                           out: Collector[HubMessage]): Unit = {
     val request: Request = message.getRequest
-    val networkId: Int = message.getNetworkId
     val hubId: NodeId = new NodeId(NodeType.HUB, message.getDestination.getNodeId)
+    val parallelTraining: Boolean = parallelism > 1
     val flinkNetwork = FlinkNetwork[SpokeMessage, HubMessage, HubMessage](
       NodeType.HUB,
-      networkId,
-      getRuntimeContext.getExecutionConfig.getParallelism,
-      if (request.getTraining_configuration.containsKey("HubParallelism"))
-        request.getTraining_configuration.get("HubParallelism").asInstanceOf[Double].toInt
-      else 1
+      message.getNetworkId,
+      parallelism,
+      if (parallelTraining && request.getTrainingConfiguration.containsKey("HubParallelism"))
+        request.getTrainingConfiguration.get("HubParallelism").asInstanceOf[Double].toInt
+      else
+        1
     )
 
-    val genWrapper = new GenericWrapper(hubId, nodeFactory.generateHubNode(request), flinkNetwork)
-    state add (SpokeMessage(0, null, null, null, genWrapper, null), ctx, out)
+    val genWrapper = new GenericWrapper(
+      hubId,
+      {
+        if (parallelTraining)
+          nodeFactory.generateHubNode(request)
+        else {
+          request.getTrainingConfiguration.replace("protocol", "CentralizedTraining".asInstanceOf[AnyRef])
+          nodeFactory.generateHubNode(request)
+        }
+      },
+      flinkNetwork
+    )
+    state add(SpokeMessage(0, null, null, null, genWrapper, null), ctx, out)
 
   }
 

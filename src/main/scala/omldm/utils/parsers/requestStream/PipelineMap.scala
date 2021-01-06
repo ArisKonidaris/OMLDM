@@ -21,8 +21,8 @@ class PipelineMap() extends RichFlatMapFunction[Request, ControlMessage] {
 
     if (request.isValid) {
       if (request.getLearner != null && !ValidLists.learners.contains(request.getLearner.getName)) return
-      if (request.getPreprocessors != null &&
-        !(for (pp: PreprocessorPOJO <- request.getPreprocessors.asScala.toList)
+      if (request.getPreProcessors != null &&
+        !(for (pp: PreprocessorPOJO <- request.getPreProcessors.asScala.toList)
           yield ValidLists.preprocessors.contains(pp.getName)
           ).reduce((x,y) => x && y)
       ) return
@@ -58,8 +58,8 @@ class PipelineMap() extends RichFlatMapFunction[Request, ControlMessage] {
   }
 
   object ValidLists {
-    val preprocessors: List[String] = List("PolynomialFeatures", "StandardScaler")
-    val learners: List[String] = List("PA", "regressorPA", "ORR", "SVM", "MultiClassPA", "KMeans")
+    val preprocessors: List[String] = List("PolynomialFeatures", "StandardScaler", "MinMaxScaler")
+    val learners: List[String] = List("PA", "RegressorPA", "ORR", "SVM", "MultiClassPA", "KMeans", "NN")
   }
 
 }

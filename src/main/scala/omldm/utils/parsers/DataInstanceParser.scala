@@ -13,7 +13,8 @@ case class DataInstanceParser() extends RichFlatMapFunction[String, DataInstance
     try {
       if (!record.equals("EOS")) {
         val dataInstance = mapper.readValue(record, classOf[DataInstance])
-        if (dataInstance.isValid) collector.collect(dataInstance)
+        if (dataInstance.isValid)
+          collector.collect(dataInstance)
       }
     } catch {
       case _: Throwable =>

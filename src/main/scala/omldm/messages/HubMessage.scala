@@ -1,10 +1,9 @@
 package omldm.messages
 
 import java.io.Serializable
-
 import BipartiteTopologyAPI.operations.RemoteCallIdentifier
 import BipartiteTopologyAPI.sites.NodeId
-import ControlAPI.Request
+import ControlAPI.{CountableSerial, Request}
 
 case class HubMessage(var networkId: Int,
                       var operations: Array[RemoteCallIdentifier],
@@ -16,10 +15,10 @@ case class HubMessage(var networkId: Int,
   def this() = this(
     -1,
     new Array[RemoteCallIdentifier](1),
-    new NodeId(null, -1),
+    new NodeId(null, 0),
     new Array[NodeId](1),
     null,
-    new Request()
+    null
   )
 
   def getNetworkId: Int = networkId
@@ -40,12 +39,20 @@ case class HubMessage(var networkId: Int,
 
   def getData: Serializable = data
 
-  def setData(data: Serializable): Unit = this.data = data
+  def setData(data: CountableSerial): Unit = this.data = data
 
   def getRequest: Request = request
 
   def setRequest(request: Request): Unit = this.request = request
 
+  def getSize: Int = {
+    { if (networkId != null) 4 else 0 } +
+      { if (operations != null) operations.length * (for (rci <- operations) yield rci.getSize).sum else 0 } +
+      { if (source != null) source.getSize else 0 } +
+      { if (destinations != null) destinations.length * (for (rci <- destinations) yield rci.getSize).sum else 0 } +
+      { if (data != null && data.isInstanceOf[CountableSerial]) data.asInstanceOf[CountableSerial].getSize else 0 } +
+      { if (request != null) request.getSize else 0 }
+  }
 
   override def equals(obj: Any): Boolean = {
     obj match {
@@ -60,6 +67,6 @@ case class HubMessage(var networkId: Int,
     }
   }
 
-  override def toString: String = s"HubMessage(" + s"$networkId, $operations, $source, $destinations, $data, $request)"
+  override def toString: String = s"HubMessage(" + s"$networkId, ${operations.mkString("Array(", ", ", ")")}, $source, ${destinations.mkString("Array(", ", ", ")")}, $data, $request)"
 
 }

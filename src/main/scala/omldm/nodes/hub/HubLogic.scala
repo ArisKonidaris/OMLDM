@@ -17,11 +17,20 @@ abstract class HubLogic[InMsg <: Serializable, OutMsg <: Serializable]
   extends KeyedProcessFunction[String, InMsg, OutMsg]
     with Hub {
 
+  protected var jobParallelism: Int = 0
+
   protected var state: AggregatingState[
     (InMsg, KeyedProcessFunction[String, InMsg, OutMsg]#Context, Collector[OutMsg]),
     GenericWrapper
   ]
 
   protected var cache: AggregatingState[InMsg, Option[InMsg]]
+
+  def parallelism: Int = {
+    jobParallelism = getRuntimeContext.getExecutionConfig.getParallelism
+    jobParallelism
+  }
+
+  def checkParallelism: Boolean = jobParallelism == getRuntimeContext.getExecutionConfig.getParallelism
 
 }

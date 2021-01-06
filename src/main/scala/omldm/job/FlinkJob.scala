@@ -5,7 +5,7 @@ package omldm.job
  *
  * @tparam T The output stream(s) of the OMLDM job.
  */
-trait Flink_Job[T] {
+trait FlinkJob[T] {
 
   def getJobOutput: T
 

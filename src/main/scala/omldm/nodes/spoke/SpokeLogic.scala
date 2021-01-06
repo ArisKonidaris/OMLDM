@@ -22,6 +22,8 @@ abstract class SpokeLogic[InMsg <: Serializable, CtrlMsg <: Serializable, OutMsg
     with CheckpointedFunction
     with Spoke {
 
+  protected var jobParallelism: Int = 0
+
   protected val state: scala.collection.mutable.Map[Int, BufferingWrapper[InMsg]] =
     scala.collection.mutable.Map[Int, BufferingWrapper[InMsg]]()
   protected var cache: DataSet[InMsg] = new DataSet[InMsg](100000)
@@ -40,5 +42,12 @@ abstract class SpokeLogic[InMsg <: Serializable, CtrlMsg <: Serializable, OutMsg
 
     new_buffer
   }
+
+  def parallelism: Int = {
+    jobParallelism = getRuntimeContext.getExecutionConfig.getParallelism
+    jobParallelism
+  }
+
+  def checkParallelism: Boolean = jobParallelism == getRuntimeContext.getExecutionConfig.getParallelism
 
 }

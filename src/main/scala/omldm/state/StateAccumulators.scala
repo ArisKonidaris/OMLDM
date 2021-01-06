@@ -1,6 +1,7 @@
 package omldm.state
 
 import BipartiteTopologyAPI.GenericWrapper
+import ControlAPI.Statistics
 import breeze.linalg.{DenseVector => BreezeDenseVector}
 import mlAPI.dataBuffers.DataSet
 import mlAPI.math.Point
@@ -18,15 +19,15 @@ class Counter(counter: Long) {
   def this() = this(0)
 }
 
-class ParameterAccumulator(params: lr_params) {
+class ParameterAccumulator(val params: lr_params) {
   def this() = this(VectorBias(BreezeDenseVector.zeros[Double](1), 0.0))
 }
 
-class DataQueueAccumulator(dataSet: mutable.Queue[Point]) {
+class DataQueueAccumulator(val dataSet: mutable.Queue[Point]) {
   def this() = this(mutable.Queue[Point]())
 }
 
-class DataListAccumulator(dataSet: ListBuffer[Point]) {
+class DataListAccumulator(val dataSet: ListBuffer[Point]) {
   def this() = this(ListBuffer[Point]())
 }
 
@@ -34,11 +35,75 @@ class SpokeMessageAccumulator(val dataSet: DataSet[SpokeMessage]) {
   def this() = this(new DataSet[SpokeMessage](20000))
 }
 
-class NodeAccumulator(node: GenericWrapper) {
+class NodeAccumulator(val node: GenericWrapper) {
 
   def this() = this(null)
 
   def getNodeWrapper: GenericWrapper = node
+
+}
+
+class StatisticsAccumulator(val mlpHubIds: mutable.HashMap[Int, ListBuffer[String]],
+                            val stats: mutable.HashMap[String, Statistics]) {
+  def this() = this(new mutable.HashMap[Int, ListBuffer[String]](), new mutable.HashMap[String, Statistics]())
+}
+
+class StatisticsAggregateFunction()
+  extends AggregateFunction[
+    (String, Statistics),
+    StatisticsAccumulator,
+    mutable.HashMap[Int, Statistics]] {
+
+  override def createAccumulator(): StatisticsAccumulator = new StatisticsAccumulator()
+
+  override def add(in: (String, Statistics), acc: StatisticsAccumulator)
+  : StatisticsAccumulator = {
+    if (!acc.mlpHubIds.contains(in._2.getPipeline)) {
+      assert(!acc.stats.contains(in._1))
+      acc.mlpHubIds.put(in._2.getPipeline, new ListBuffer[String]())
+      acc.mlpHubIds(in._2.getPipeline) += in._1
+      acc.stats.put(in._1, in._2)
+    } else {
+      if (!acc.stats.contains(in._1)) {
+        assert(acc.mlpHubIds.contains(in._2.getPipeline))
+        assert(!acc.mlpHubIds(in._2.getPipeline).contains(in._1))
+        acc.mlpHubIds(in._2.getPipeline) += in._1
+        acc.stats.put(in._1, in._2)
+      } else
+        acc.stats(in._1) = in._2
+    }
+    acc
+  }
+
+  override def getResult(acc: StatisticsAccumulator): mutable.HashMap[Int, Statistics] = {
+    val result: mutable.HashMap[Int, Statistics] = new mutable.HashMap[Int, Statistics]()
+    for (mhi <- acc.mlpHubIds.iterator) {
+      result.put(mhi._1, new Statistics(mhi._1))
+      for (hi: String <- mhi._2) {
+        if (result(mhi._1).getProtocol.equals(""))
+          result(mhi._1).setProtocol(acc.stats(hi).getProtocol)
+        result(mhi._1).updateStats(acc.stats(hi))
+      }
+    }
+    result
+  }
+
+  override def merge(acc: StatisticsAccumulator, acc1: StatisticsAccumulator): StatisticsAccumulator = {
+    for (entry: (Int, ListBuffer[String]) <- acc1.mlpHubIds)
+      if (!acc.mlpHubIds.contains(entry._1))
+        acc.mlpHubIds.put(entry._1, entry._2)
+      else
+        for (hi: String <-entry._2)
+          if (!acc.mlpHubIds(entry._1).contains(hi))
+            acc.mlpHubIds(entry._1) += hi
+    for (entry: (String, Statistics)  <- acc1.stats)
+      if (!acc.stats.contains(entry._1))
+        acc.stats.put(entry._1, entry._2)
+      else
+        acc.stats(entry._1).updateStats(entry._2)
+    acc
+  }
+
 }
 
 class DataAggregateFunction(max_size: Int)

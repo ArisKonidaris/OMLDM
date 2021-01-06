@@ -16,7 +16,8 @@ class DataInstanceDeserializer(val includeMetadata: Boolean) extends KafkaDeseri
   override def isEndOfStream(t: DataInstance): Boolean = false
 
   override def deserialize(record: ConsumerRecord[Array[Byte], Array[Byte]]): DataInstance = {
-    if (mapper == null) mapper = new ObjectMapper()
+    if (mapper == null)
+      mapper = new ObjectMapper()
     var dataPoint: DataInstance = null
     try {
       if (record.value != null) {
@@ -29,7 +30,8 @@ class DataInstanceDeserializer(val includeMetadata: Boolean) extends KafkaDeseri
               record.offset(),
               record.timestamp()
             )
-        } else dataPoint = null
+        } else
+          dataPoint = null
       }
     } catch {
       case _: Throwable => dataPoint = null

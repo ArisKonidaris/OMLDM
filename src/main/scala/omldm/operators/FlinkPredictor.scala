@@ -85,7 +85,7 @@ class FlinkPredictor[G <: NodeGenerator](implicit man: Manifest[G])
                     if (!state.contains(network)) {
                       val hubParallelism: Int = {
                         try {
-                          req.getTraining_configuration.getOrDefault("HubParallelism", "1").asInstanceOf[Int]
+                          req.getTrainingConfiguration.getOrDefault("HubParallelism", "1").asInstanceOf[Int]
                         } catch {
                           case _: Throwable => 1
                         }

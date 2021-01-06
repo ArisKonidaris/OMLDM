@@ -6,6 +6,7 @@ import ControlAPI.{DataInstance, Prediction}
 import mlAPI.parameters.ParameterDescriptor
 import omldm.messages.{ControlMessage, HubMessage, SpokeMessage}
 import omldm.operators.FlinkPredictor
+import omldm.Job.predictions
 import omldm.utils.generators.MLNodeGenerator
 import org.apache.flink.api.common.functions.RichFlatMapFunction
 import org.apache.flink.api.java.utils.ParameterTool
@@ -17,10 +18,7 @@ case class FlinkPrediction(env: StreamExecutionEnvironment,
                            request: DataStream[ControlMessage],
                            updates: DataStream[HubMessage])
                           (implicit val params: ParameterTool)
-  extends Flink_Job[DataStream[Prediction]] {
-
-  /** The predictions side-output. */
-  val predictions: OutputTag[Prediction] = OutputTag[Prediction]("predictionStream")
+  extends FlinkJob[DataStream[Prediction]] {
 
   /** Creating the model updates. */
   val modelUpdates: DataStream[ControlMessage] = updates
@@ -33,38 +31,40 @@ case class FlinkPrediction(env: StreamExecutionEnvironment,
             false
       }
     ).flatMap(
-    new RichFlatMapFunction[HubMessage, ControlMessage] {
-      var counter: Int = 0
-      override def flatMap(hMessage: HubMessage, collector: Collector[ControlMessage]): Unit = {
-        if (counter == 5) {
-          val message = ControlMessage(
-            hMessage.getNetworkId,
-            hMessage.operations.head,
-            hMessage.getSource,
-            hMessage.destinations.head,
-            hMessage.getData,
-            hMessage.getRequest
-          )
-          message.getOperation.setCallType(CallType.ONE_WAY)
-          message.getData match {
-            case _: ParameterDescriptor =>
-              for (i <- 0 until getRuntimeContext.getExecutionConfig.getParallelism) {
-                message.setDestination(new NodeId(NodeType.SPOKE, i))
-                collector.collect(message)
-              }
-            case _ =>
-          }
-          counter = 0
-        } else counter += 1
+      new RichFlatMapFunction[HubMessage, ControlMessage] {
+        var counter: Int = 0
+
+        override def flatMap(hMessage: HubMessage, collector: Collector[ControlMessage]): Unit = {
+          if (counter == 5) {
+            val message = ControlMessage(
+              hMessage.getNetworkId,
+              hMessage.operations.head,
+              hMessage.getSource,
+              hMessage.destinations.head,
+              hMessage.getData,
+              hMessage.getRequest
+            )
+            message.getOperation.setCallType(CallType.ONE_WAY)
+            message.getData match {
+              case _: ParameterDescriptor =>
+                for (i <- 0 until getRuntimeContext.getExecutionConfig.getParallelism) {
+                  message.setDestination(new NodeId(NodeType.SPOKE, i))
+                  collector.collect(message)
+                }
+              case _ =>
+            }
+            counter = 0
+          } else counter += 1
+        }
       }
-    }
-  ).name("ModelUpdates")
+    ).name("ModelUpdates")
 
   /** Partitioning the prediction data along with the control messages to the predictors. */
   val predictionDataBlocks: ConnectedStreams[DataInstance, ControlMessage] = forecastingSource
     .flatMap(
       new RichFlatMapFunction[DataInstance, DataInstance] {
         private var count: Long = 0
+
         override def flatMap(in: DataInstance, collector: Collector[DataInstance]): Unit = {
           in.setId(count)
           collector.collect(in)

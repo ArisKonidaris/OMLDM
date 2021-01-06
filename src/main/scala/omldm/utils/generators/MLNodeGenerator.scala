@@ -2,9 +2,10 @@ package omldm.utils.generators
 
 import BipartiteTopologyAPI.NodeInstance
 import ControlAPI.Request
-import mlAPI.mlParameterServers.{AsynchronousParameterServer, FGMParameterServer, SynchronousParameterServer}
+import mlAPI.mlParameterServers.{AsynchronousParameterServer, FGMParameterServer, SimplePS, SynchronousParameterServer}
 import mlAPI.mlworkers.MLPredictor
-import mlAPI.mlworkers.worker.{AsynchronousWorker, FGMWorker, SynchronousWorker}
+import mlAPI.mlworkers.worker.PeriodicWorkers.{AsynchronousWorker, SynchronousWorker}
+import mlAPI.mlworkers.worker.{FGMWorker, SingleWorker}
 
 import scala.collection.mutable
 import scala.collection.JavaConverters._
@@ -13,7 +14,7 @@ case class MLNodeGenerator() extends NodeGenerator {
 
   override def generateSpokeNode(request: Request): NodeInstance[_, _] = {
     try {
-      val config: mutable.Map[String, AnyRef] = request.getTraining_configuration.asScala
+      val config: mutable.Map[String, AnyRef] = request.getTrainingConfiguration.asScala
       if (config.contains("protocol"))
         try {
           config.get("protocol").asInstanceOf[Option[String]] match {
@@ -21,10 +22,11 @@ case class MLNodeGenerator() extends NodeGenerator {
             case Some("Synchronous") => SynchronousWorker().configureWorker(request)
             case Some("DynamicAveraging") => AsynchronousWorker().configureWorker(request)
             case Some("FGM") => FGMWorker().configureWorker(request)
+            case Some("CentralizedTraining") => SingleWorker().configureWorker(request)
             case Some(_) => AsynchronousWorker().configureWorker(request)
           }
         } catch {
-            case e: Throwable => AsynchronousWorker().configureWorker(request)
+            case _: Throwable => AsynchronousWorker().configureWorker(request)
         }
       else
         AsynchronousWorker().configureWorker(request)
@@ -35,7 +37,7 @@ case class MLNodeGenerator() extends NodeGenerator {
 
   override def generateHubNode(request: Request): NodeInstance[_, _] = {
     try {
-      val config: mutable.Map[String, AnyRef] = request.getTraining_configuration.asScala
+      val config: mutable.Map[String, AnyRef] = request.getTrainingConfiguration.asScala
       if (config.contains("protocol"))
         try {
           config.get("protocol").asInstanceOf[Option[String]] match {
@@ -43,6 +45,7 @@ case class MLNodeGenerator() extends NodeGenerator {
             case Some("Synchronous") => SynchronousParameterServer().configureParameterServer(request)
             case Some("DynamicAveraging") => AsynchronousParameterServer().configureParameterServer(request)
             case Some("FGM") => FGMParameterServer().configureParameterServer(request)
+            case Some("CentralizedTraining") => SimplePS().configureParameterServer(request)
             case Some(_) => AsynchronousParameterServer().configureParameterServer(request)
           }
         } catch {

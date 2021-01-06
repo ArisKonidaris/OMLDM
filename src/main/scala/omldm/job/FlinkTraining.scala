@@ -1,21 +1,22 @@
 package omldm.job
 
-import java.sql.Timestamp
-
-import ControlAPI.QueryResponse
+import BipartiteTopologyAPI.sites.{NodeId, NodeType}
+import omldm.Job.{queryResponse, terminationStats, trainingStats}
+import ControlAPI.{JobStatistics, QueryResponse, Statistics}
 import mlAPI.math.Point
 import omldm.messages.{ControlMessage, HubMessage, SpokeMessage}
 import omldm.operators.{FlinkHub, FlinkSpoke}
-import omldm.utils.DefaultJobParameters
+import omldm.utils.{DefaultJobParameters, JobTerminator, PerformanceWriter}
+import omldm.utils.KafkaUtils.createProperties
 import omldm.utils.generators.MLNodeGenerator
 import omldm.utils.partitioners.random_partitioner
+import omldm.utils.statistics.StatisticsOperator
 import org.apache.flink.api.common.functions.RichFlatMapFunction
-import org.apache.flink.api.common.state.{ValueState, ValueStateDescriptor}
+import org.apache.flink.api.common.serialization.SimpleStringSchema
 import org.apache.flink.api.java.utils.ParameterTool
-import org.apache.flink.configuration.Configuration
-import org.apache.flink.streaming.api.functions.KeyedProcessFunction
 import org.apache.flink.streaming.api.scala.{ConnectedStreams, DataStream, OutputTag}
-import org.apache.flink.streaming.api.scala.{createTypeInformation, StreamExecutionEnvironment}
+import org.apache.flink.streaming.api.scala.{StreamExecutionEnvironment, createTypeInformation}
+import org.apache.flink.streaming.connectors.kafka.{FlinkKafkaConsumer, FlinkKafkaProducer}
 import org.apache.flink.util.Collector
 
 /**
@@ -32,14 +33,26 @@ case class FlinkTraining(env: StreamExecutionEnvironment,
                          requests: DataStream[ControlMessage],
                          psMessages: DataStream[HubMessage])
                         (implicit val params: ParameterTool)
-  extends Flink_Job[(DataStream[HubMessage], DataStream[QueryResponse])] {
+  extends FlinkJob[(DataStream[HubMessage], DataStream[QueryResponse])] {
 
 
   //////////////////////////////////////////////// Side Outputs ////////////////////////////////////////////////////////
 
 
-  val trainingTime: OutputTag[Any] = OutputTag[Any]("trainingTime")
-  val queryResponse: OutputTag[QueryResponse] = OutputTag[QueryResponse]("QueryResponse")
+  val testing: Boolean = params.get("test", DefaultJobParameters.defaultTestParameter).toBoolean
+  val jobName: String = params.get("jobName", DefaultJobParameters.defaultJobName)
+
+
+  ////////////////////////////////////////// Testing Performance Topic /////////////////////////////////////////////////
+
+
+  /** When the job receives this record then it terminates itself. */
+  val jobPerformanceSource: DataStream[_] = env.addSource(
+    new FlinkKafkaConsumer[String](params.get("performanceTopic", "performance"),
+      new SimpleStringSchema(),
+      createProperties("performanceAddr", "performanceConsumer"))
+      .setStartFromLatest())
+    .flatMap(new JobTerminator(jobName)).name("PerformanceSource")
 
 
   /////////////////////////////////////////////////// Training /////////////////////////////////////////////////////////
@@ -49,8 +62,12 @@ case class FlinkTraining(env: StreamExecutionEnvironment,
   val hubMessages: DataStream[ControlMessage] = psMessages
     .flatMap(new RichFlatMapFunction[HubMessage, ControlMessage] {
       override def flatMap(in: HubMessage, out: Collector[ControlMessage]): Unit = {
-        for ((rpc, dest) <- in.operations zip in.destinations)
-          out.collect(ControlMessage(in.getNetworkId, rpc, in.getSource, dest, in.getData, in.getRequest))
+        if (in.networkId == -1)
+          for (worker <- 0 until getRuntimeContext.getExecutionConfig.getParallelism)
+            out.collect(ControlMessage(-1, null, null, new NodeId(NodeType.SPOKE, worker), null, null))
+        else
+          for ((rpc, dest) <- in.operations zip in.destinations)
+            out.collect(ControlMessage(in.getNetworkId, rpc, in.getSource, dest, in.getData, in.getRequest))
       }
     })
 
@@ -65,63 +82,43 @@ case class FlinkTraining(env: StreamExecutionEnvironment,
 
   /** The parallel learning procedure happens here. */
   val worker: DataStream[SpokeMessage] = trainingDataBlocks
-    .process(new FlinkSpoke[MLNodeGenerator])
+    .process(new FlinkSpoke[MLNodeGenerator](testing))
     .name("FlinkSpoke")
 
   /** The coordinator operators, where the learners are merged. */
   val coordinator: DataStream[HubMessage] = worker
+    .filter(x => x.networkId != -1)
     .keyBy((x: SpokeMessage) => x.getNetworkId + "_" + x.getDestination.getNodeId)
-    .process(new FlinkHub[MLNodeGenerator](params.get("test", DefaultJobParameters.defaultTestParameter).toBoolean))
+    .process(new FlinkHub[MLNodeGenerator](testing))
     .name("FlinkHub")
 
   /** This is activated only when testing the performance of the OMLDM component. */
-  coordinator.getSideOutput(trainingTime)
+  val performance: DataStream[JobStatistics] = coordinator.getSideOutput(trainingStats)
+    .union(worker.filter(x => x.getNetworkId == -1).map(_ => ("", new Statistics())))
+    .union(
+      worker.getSideOutput(queryResponse)
+        .filter(x => x.responseId == -1)
+        .map(x => (
+          "Terminate",
+          new Statistics(x.getMlpId, null, x.getCumulativeLoss, 0, 0, 0, x.getDataFitted, x.getScore))
+        )
+    )
     .keyBy(_ => 0)
-    .process(new KeyedProcessFunction[Int, Any, Long] {
+    .process(new StatisticsOperator(jobName))
 
-      private val timeout: Long = 15000 // The maximum waiting period.
-      private var start: ValueState[Long] = _
-      private var end: ValueState[Long] = _
-      private var timestampState: ValueState[Long] = _ // The timestamp of the latest message.
+  /** A Kafka Sink for the training performance results. */
+  performance
+    .map(new PerformanceWriter())
+    .addSink(new FlinkKafkaProducer[String](
+      params.get("performanceAddr", "localhost:9092"), // broker list
+      params.get("performanceTopic", "performance"), // target topic
+      new SimpleStringSchema()))
+    .name("PerformanceSink")
 
-      override def open(parameters: Configuration): Unit = {
-        start = getRuntimeContext.getState(new ValueStateDescriptor[Long]("startTimestamp", classOf[Long]))
-        end = getRuntimeContext.getState(new ValueStateDescriptor[Long]("endTimestamp", classOf[Long]))
-        timestampState = getRuntimeContext.getState(new ValueStateDescriptor[Long]("timestampState", classOf[Long]))
-      }
 
-      override def processElement(messageTimestamp: Any,
-                                  ctx: KeyedProcessFunction[Int, Any, Long]#Context, collector: Collector[Long])
-      : Unit = {
-        if (start.value() == null) {
-          println("Starting test at time: " + new Timestamp(messageTimestamp.asInstanceOf[Long]).getTime)
-//          start.update(messageTimestamp.asInstanceOf[Long])
-          start.update(ctx.timestamp())
-        } else {
-//          end.update(messageTimestamp.asInstanceOf[Long])
-          end.update(ctx.timestamp())
-        }
-
-        // Set the state's timestamp to the record's assigned timestamp.
-        val tempTime = ctx.timestamp()
-        timestampState.update(tempTime)
-
-        // Schedule the next timer timeout ms from the current record time.
-        ctx.timerService.registerEventTimeTimer(tempTime + timeout)
-
-      }
-
-      override def onTimer(timestamp: Long,
-                           ctx: KeyedProcessFunction[Int, Any, Long]#OnTimerContext, out: Collector[Long])
-      : Unit = {
-        // Check if this is an outdated timer or the latest timer.
-        if (timestamp == timestampState.value + timeout)
-          throw new Exception("End of Job.\nTest time: " + (end.value() - start.value()))
-      }
-
-    })
+  val feedback: DataStream[HubMessage] = coordinator.union(performance.getSideOutput(terminationStats))
 
   override def getJobOutput: (DataStream[HubMessage], DataStream[QueryResponse]) =
-    (coordinator, worker.getSideOutput(queryResponse))
+    (feedback, worker.getSideOutput(queryResponse).filter(x => x.responseId >= 0))
 
 }

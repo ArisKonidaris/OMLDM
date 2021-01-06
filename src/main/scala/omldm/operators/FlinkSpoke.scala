@@ -1,7 +1,6 @@
 package omldm.operators
 
 import java.io.Serializable
-
 import BipartiteTopologyAPI.BufferingWrapper
 import BipartiteTopologyAPI.network.Node
 import BipartiteTopologyAPI.operations.RemoteCallIdentifier
@@ -24,19 +23,22 @@ import scala.reflect.Manifest
 import scala.util.Random
 
 /** A CoFlatMap Flink Function modelling a worker request in a star distributed topology. */
-class FlinkSpoke[G <: NodeGenerator](implicit man: Manifest[G])
+class FlinkSpoke[G <: NodeGenerator](val test: Boolean)(implicit man: Manifest[G])
   extends SpokeLogic[Point, ControlMessage, SpokeMessage] {
 
-  /** Used to sample data points for testing the score of the model. */
+  /** A counter used to sample data points for testing the score of the model. */
   private var count: Int = 0
 
+  /** A counter used for testing the performance of the training job. */
+  private var testingCount: Int = 0
+
   /** The test set buffer. */
-  private var test_set: DataSet[Point] = new DataSet[Point](500)
-  private var saved_test_set: ListState[DataSet[Point]] = _
+  private var testSet: DataSet[Point] = new DataSet[Point](500)
+  private var savedTestSet: ListState[DataSet[Point]] = _
 
   /** The nodes trained in the current Flink operator instance. */
   private var nodes: ListState[scala.collection.mutable.Map[Int, BufferingWrapper[Point]]] = _
-  private var saved_cache: ListState[DataSet[Point]] = _
+  private var savedCache: ListState[DataSet[Point]] = _
 
   private var collector: Collector[SpokeMessage] = _
   private var context: CoProcessFunction[Point, ControlMessage, SpokeMessage]#Context = _
@@ -63,13 +65,22 @@ class FlinkSpoke[G <: NodeGenerator](implicit man: Manifest[G])
         while (cache.nonEmpty) handleData(cache.pop.get)
       } else handleData(data)
     } else cache.append(data)
+
+    // For calculating the performance of the training procedure.
+    if (test) {
+      testingCount += 1
+      if (testingCount == 100) {
+        testingCount = 0
+        out.collect(SpokeMessage(-1, null, null, null, null, null))
+      }
+    }
   }
 
   private def handleData(data: Serializable): Unit = {
     // Train or test point.
     if (getRuntimeContext.getIndexOfThisSubtask == 0) {
       if (count >= 8) {
-        test_set.append(data.asInstanceOf[Point]) match {
+        testSet.append(data.asInstanceOf[Point]) match {
           case Some(point: Serializable) => for ((_, node: Node) <- state) node.receiveTuple(Array[Any](point))
           case None =>
         }
@@ -77,13 +88,13 @@ class FlinkSpoke[G <: NodeGenerator](implicit man: Manifest[G])
       count += 1
       if (count == 10) count = 0
     } else {
-      if (test_set.nonEmpty) {
-        test_set.append(data.asInstanceOf[Point]) match {
+      if (testSet.nonEmpty) {
+        testSet.append(data.asInstanceOf[Point]) match {
           case Some(point: Serializable) => for ((_, node: Node) <- state) node.receiveTuple(Array[Any](point))
           case None =>
         }
-        while (test_set.nonEmpty) {
-          val point = test_set.pop.get
+        while (testSet.nonEmpty) {
+          val point = testSet.pop.get
           for ((_, node: Node) <- state) node.receiveTuple(Array[Any](point))
         }
       } else for ((_, node: Node) <- state) node.receiveTuple(Array[Any](data))
@@ -116,29 +127,45 @@ class FlinkSpoke[G <: NodeGenerator](implicit man: Manifest[G])
 
           case null =>
             request match {
-              case null => println(s"Empty request in worker ${getRuntimeContext.getIndexOfThisSubtask}.")
+              case null =>
+                if (network == -1)
+                  for ((_, node: Node) <- state)
+                    node.receiveQuery(-1, (node.getMeanBufferSize / (parallelism * 1.0), testSet.dataBuffer.toArray))
+                else
+                  println(s"Empty request in worker ${getRuntimeContext.getIndexOfThisSubtask}.")
               case req: Request =>
                 req.getRequest match {
                   case "Create" =>
                     if (!state.contains(network)) {
+                      val parallelTraining: Boolean = parallelism > 1
                       val hubParallelism: Int = {
-                        try {
-                          req.getTraining_configuration.getOrDefault("HubParallelism", "1").asInstanceOf[Int]
-                        } catch {
-                          case _: Throwable => 1
-                        }
+                        if (parallelTraining)
+                          try {
+                            req.getTrainingConfiguration.getOrDefault("HubParallelism", "1").asInstanceOf[Int]
+                          } catch {
+                            case _: Throwable => 1
+                          }
+                        else
+                          1
                       }
                       val flinkNetwork = FlinkNetwork[Point, ControlMessage, SpokeMessage](
                         NodeType.SPOKE,
                         network,
-                        getRuntimeContext.getExecutionConfig.getParallelism,
+                        parallelism,
                         hubParallelism)
                       flinkNetwork.setCollector(collector)
                       flinkNetwork.setContext(context)
                       state += (
                         network -> new BufferingWrapper(
                           new NodeId(NodeType.SPOKE, getRuntimeContext.getIndexOfThisSubtask),
-                          nodeFactory.generateSpokeNode(req),
+                          {
+                            if (parallelTraining)
+                              nodeFactory.generateSpokeNode(req)
+                            else {
+                              req.getTrainingConfiguration.replace("protocol", "CentralizedTraining".asInstanceOf[AnyRef])
+                              nodeFactory.generateSpokeNode(req)
+                            }
+                          },
                           flinkNetwork)
                         )
                       if (getRuntimeContext.getIndexOfThisSubtask == 0)
@@ -151,7 +178,7 @@ class FlinkSpoke[G <: NodeGenerator](implicit man: Manifest[G])
                   case "Query" =>
                     if (req.getRequestId != null)
                       if (state.contains(network))
-                        state(network).receiveQuery(req.getRequestId, test_set.data_buffer.toArray)
+                        state(network).receiveQuery(req.getRequestId, (0, testSet.dataBuffer.toArray))
                       else
                         println("No such Network.")
                     else println("No requestId given for the query.")
@@ -177,20 +204,19 @@ class FlinkSpoke[G <: NodeGenerator](implicit man: Manifest[G])
 
     // ======================================== Snapshot the test set ==================================================
 
-    if (test_set != null) {
-      saved_test_set.clear()
-      saved_test_set add test_set
+    if (testSet != null) {
+      savedTestSet.clear()
+      savedTestSet add testSet
     }
 
     // ================================ Snapshot the network nodes and the cache =======================================
 
     nodes.clear()
     nodes add state
-    saved_cache.clear()
-    saved_cache add cache
+    savedCache.clear()
+    savedCache add cache
 
   }
-
 
   /** Operator initializer method.
    *
@@ -207,13 +233,13 @@ class FlinkSpoke[G <: NodeGenerator](implicit man: Manifest[G])
         TypeInformation.of(new TypeHint[scala.collection.mutable.Map[Int, BufferingWrapper[Point]]]() {}))
     )
 
-    saved_test_set = context.getOperatorStateStore.getListState(
-      new ListStateDescriptor[DataSet[Point]]("saved_test_set",
+    savedTestSet = context.getOperatorStateStore.getListState(
+      new ListStateDescriptor[DataSet[Point]]("savedTestSet",
         TypeInformation.of(new TypeHint[DataSet[Point]]() {}))
     )
 
-    saved_cache = context.getOperatorStateStore.getListState(
-      new ListStateDescriptor[DataSet[Point]]("saved_cache",
+    savedCache = context.getOperatorStateStore.getListState(
+      new ListStateDescriptor[DataSet[Point]]("savedCache",
         TypeInformation.of(new TypeHint[DataSet[Point]]() {}))
     )
 
@@ -243,21 +269,21 @@ class FlinkSpoke[G <: NodeGenerator](implicit man: Manifest[G])
 
       // ====================================== Restoring the test set =================================================
 
-      test_set.clear()
-      test_set = mergingDataBuffers(saved_test_set)
+      testSet.clear()
+      testSet = mergingDataBuffers(savedTestSet)
       if (state.nonEmpty)
-        while (test_set.length > test_set.getMaxSize)
+        while (testSet.length > testSet.getMaxSize)
           for ((_, node) <- state)
-            node.receiveTuple(test_set.pop.get)
+            node.receiveTuple(testSet.pop.get)
       else
-        while (test_set.length > test_set.getMaxSize)
-          test_set.pop
-      assert(test_set.length <= test_set.getMaxSize)
+        while (testSet.length > testSet.getMaxSize)
+          testSet.pop
+      assert(testSet.length <= testSet.getMaxSize)
 
       // ====================================== Restoring the data cache ===============================================
 
       cache.clear()
-      cache = mergingDataBuffers(saved_cache)
+      cache = mergingDataBuffers(savedCache)
       if (state.nonEmpty)
         while (cache.nonEmpty)
           handleData(cache.pop.get)
@@ -268,14 +294,6 @@ class FlinkSpoke[G <: NodeGenerator](implicit man: Manifest[G])
 
     }
 
-  }
-
-
-  /** Print the score of each ML FlinkSpoke for the local test set for debugging */
-  private def checkScore(): Unit = {
-    // TODO: Change this. You should not bind any operation to a specific Int.
-    if (Random.nextFloat() >= 0.996)
-      for ((_, node: Node) <- state) node.receiveMsg(null, null, test_set.data_buffer)
   }
 
   private def checkId(id: Int): Unit = {

@@ -1,7 +1,7 @@
 package omldm
 
 import java.util.Optional
-import ControlAPI.{DataInstance, Prediction, QueryResponse, Request}
+import ControlAPI.{DataInstance, Prediction, QueryResponse, Request, Statistics}
 import mlAPI.math.Point
 import omldm.job.{FlinkPrediction, FlinkTraining}
 import omldm.messages.{ControlMessage, HubMessage}
@@ -14,13 +14,16 @@ import omldm.utils.{Checkpointing, DefaultJobParameters}
 import org.apache.flink.api.common.serialization.{SimpleStringSchema, TypeInformationSerializationSchema}
 import org.apache.flink.api.java.utils.ParameterTool
 import org.apache.flink.streaming.api.TimeCharacteristic
-import org.apache.flink.streaming.api.scala.{DataStream, StreamExecutionEnvironment, createTypeInformation}
+import org.apache.flink.streaming.api.scala.{DataStream, OutputTag, StreamExecutionEnvironment, createTypeInformation}
 import org.apache.flink.streaming.connectors.kafka.partitioner.FlinkKafkaPartitioner
 import org.apache.flink.streaming.connectors.kafka.{FlinkKafkaConsumer, FlinkKafkaProducer}
 
-import scala.util.Random
-
 object Job {
+
+  val trainingStats: OutputTag[(String, Statistics)] = OutputTag[(String, Statistics)]("trainingStats")
+  val terminationStats: OutputTag[HubMessage] = OutputTag[HubMessage]("terminationStats")
+  val queryResponse: OutputTag[QueryResponse] = OutputTag[QueryResponse]("QueryResponse")
+  val predictions: OutputTag[Prediction] = OutputTag[Prediction]("predictionStream")
 
   def builtTrainingJob(env: StreamExecutionEnvironment,
                        requests: DataStream[ControlMessage],
@@ -94,7 +97,6 @@ object Job {
   def main(args: Array[String]) {
 
     /** Set up the streaming execution environment */
-
     implicit val env: StreamExecutionEnvironment = StreamExecutionEnvironment.getExecutionEnvironment
     implicit val params: ParameterTool = ParameterTool.fromArgs(args)
 
