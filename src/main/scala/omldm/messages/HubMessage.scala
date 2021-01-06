@@ -46,7 +46,7 @@ case class HubMessage(var networkId: Int,
   def setRequest(request: Request): Unit = this.request = request
 
   def getSize: Int = {
-    { if (networkId != null) 4 else 0 } +
+    4 +
       { if (operations != null) operations.length * (for (rci <- operations) yield rci.getSize).sum else 0 } +
       { if (source != null) source.getSize else 0 } +
       { if (destinations != null) destinations.length * (for (rci <- destinations) yield rci.getSize).sum else 0 } +

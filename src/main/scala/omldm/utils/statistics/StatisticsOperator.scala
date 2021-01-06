@@ -46,7 +46,7 @@ class StatisticsOperator(val jobName: String)
   protected var finalJobStats: ValueState[mutable.HashMap[Int, Statistics]] = _
 
   override def open(parameters: Configuration): Unit = {
-    start = getRuntimeContext.getState(new ValueStateDescriptor[Long]("startTimestamp", classOf[Long]))
+    start = getRuntimeContext.getState(new ValueStateDescriptor[Long]("startTimestamp", classOf[Long], -1L))
     end = getRuntimeContext.getState(new ValueStateDescriptor[Long]("endTimestamp", classOf[Long]))
     timestampState = getRuntimeContext.getState(new ValueStateDescriptor[Long]("timestampState", classOf[Long]))
     statsAccumulator = getRuntimeContext.getAggregatingState[
@@ -74,7 +74,7 @@ class StatisticsOperator(val jobName: String)
 
     // Update the timers.
     if (!msgStats._1.equals("Terminate"))
-      if (start.value() == null)
+      if (start.value() < 0L)
         start.update(ctx.timestamp())
       else
         end.update(ctx.timestamp())

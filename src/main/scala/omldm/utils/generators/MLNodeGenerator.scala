@@ -24,6 +24,7 @@ case class MLNodeGenerator() extends NodeGenerator {
             case Some("FGM") => FGMWorker().configureWorker(request)
             case Some("CentralizedTraining") => SingleWorker().configureWorker(request)
             case Some(_) => AsynchronousWorker().configureWorker(request)
+            case None => AsynchronousWorker().configureWorker(request)
           }
         } catch {
             case _: Throwable => AsynchronousWorker().configureWorker(request)
@@ -47,6 +48,7 @@ case class MLNodeGenerator() extends NodeGenerator {
             case Some("FGM") => FGMParameterServer().configureParameterServer(request)
             case Some("CentralizedTraining") => SimplePS().configureParameterServer(request)
             case Some(_) => AsynchronousParameterServer().configureParameterServer(request)
+            case None => AsynchronousParameterServer().configureParameterServer(request)
           }
         } catch {
           case _: Throwable => AsynchronousParameterServer().configureParameterServer(request)
