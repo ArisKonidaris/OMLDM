@@ -18,6 +18,9 @@ import org.apache.flink.streaming.api.scala.{DataStream, OutputTag, StreamExecut
 import org.apache.flink.streaming.connectors.kafka.partitioner.FlinkKafkaPartitioner
 import org.apache.flink.streaming.connectors.kafka.{FlinkKafkaConsumer, FlinkKafkaProducer}
 
+/**
+ * The Online Machine Learning and Data Mining component.
+ */
 object Job {
 
   val trainingStats: OutputTag[(String, Statistics)] = OutputTag[(String, Statistics)]("trainingStats")
