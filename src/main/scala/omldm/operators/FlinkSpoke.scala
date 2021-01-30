@@ -2,12 +2,13 @@ package omldm.operators
 
 import java.io.Serializable
 import BipartiteTopologyAPI.BufferingWrapper
-import BipartiteTopologyAPI.network.Node
+import BipartiteTopologyAPI.interfaces.Node
 import BipartiteTopologyAPI.operations.RemoteCallIdentifier
 import BipartiteTopologyAPI.sites.{NodeId, NodeType}
 import ControlAPI.Request
 import mlAPI.dataBuffers.DataSet
 import mlAPI.math.Point
+import mlAPI.utils.Parsing
 import omldm.messages.{ControlMessage, SpokeMessage}
 import omldm.network.FlinkNetwork
 import omldm.nodes.spoke.SpokeLogic
@@ -17,13 +18,14 @@ import org.apache.flink.api.common.typeinfo.{TypeHint, TypeInformation}
 import org.apache.flink.runtime.state.{FunctionInitializationContext, FunctionSnapshotContext}
 import org.apache.flink.streaming.api.functions.co.CoProcessFunction
 import org.apache.flink.util.Collector
+import scala.collection.JavaConverters._
 
 import scala.collection.mutable.ListBuffer
 import scala.reflect.Manifest
 import scala.util.Random
 
 /** A CoFlatMap Flink Function modelling a worker request in a star distributed topology. */
-class FlinkSpoke[G <: NodeGenerator](val test: Boolean)(implicit man: Manifest[G])
+class FlinkSpoke[G <: NodeGenerator](val test: Boolean, val maxMsgParams: Int)(implicit man: Manifest[G])
   extends SpokeLogic[Point, ControlMessage, SpokeMessage] {
 
   /** A counter used to sample data points for testing the score of the model. */
@@ -84,7 +86,8 @@ class FlinkSpoke[G <: NodeGenerator](val test: Boolean)(implicit man: Manifest[G
           case Some(point: Serializable) => for ((_, node: Node) <- state) node.receiveTuple(Array[Any](point))
           case None =>
         }
-      } else for ((_, node: Node) <- state) node.receiveTuple(Array[Any](data))
+      } else
+        for ((_, node: Node) <- state) node.receiveTuple(Array[Any](data))
       count += 1
       if (count == 10) count = 0
     } else {
@@ -138,15 +141,19 @@ class FlinkSpoke[G <: NodeGenerator](val test: Boolean)(implicit man: Manifest[G
                   case "Create" =>
                     if (!state.contains(network)) {
                       val parallelTraining: Boolean = parallelism > 1
-                      val hubParallelism: Int = {
+                      var hubParallelism: Int = {
                         if (parallelTraining)
                           try {
-                            req.getTrainingConfiguration.getOrDefault("HubParallelism", "1").asInstanceOf[Int]
+                            Parsing.IntegerParsing(request.getTrainingConfiguration.asScala,"HubParallelism", 1)
                           } catch {
                             case _: Throwable => 1
                           }
                         else
                           1
+                      }
+                      if (request.getTrainingConfiguration.get("protocol").equals("FGM") && hubParallelism > 1) {
+                        req.getTrainingConfiguration.replace("HubParallelism", 1.asInstanceOf[AnyRef])
+                        hubParallelism = 1
                       }
                       val flinkNetwork = FlinkNetwork[Point, ControlMessage, SpokeMessage](
                         NodeType.SPOKE,
@@ -305,6 +312,7 @@ class FlinkSpoke[G <: NodeGenerator](val test: Boolean)(implicit man: Manifest[G
     }
   }
 
-  private def nodeFactory: NodeGenerator = man.runtimeClass.newInstance().asInstanceOf[NodeGenerator]
+  private def nodeFactory: NodeGenerator =
+    man.runtimeClass.newInstance().asInstanceOf[NodeGenerator].setMaxMsgParams(maxMsgParams)
 
 }

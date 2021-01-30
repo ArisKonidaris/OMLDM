@@ -3,7 +3,7 @@ package omldm.job
 import BipartiteTopologyAPI.operations.CallType
 import BipartiteTopologyAPI.sites.{NodeId, NodeType}
 import ControlAPI.{DataInstance, Prediction}
-import mlAPI.parameters.ParameterDescriptor
+import mlAPI.parameters.utils.ParameterDescriptor
 import omldm.messages.{ControlMessage, HubMessage, SpokeMessage}
 import omldm.operators.FlinkPredictor
 import omldm.Job.predictions
@@ -32,29 +32,24 @@ case class FlinkPrediction(env: StreamExecutionEnvironment,
       }
     ).flatMap(
       new RichFlatMapFunction[HubMessage, ControlMessage] {
-        var counter: Int = 0
-
         override def flatMap(hMessage: HubMessage, collector: Collector[ControlMessage]): Unit = {
-          if (counter == 5) {
-            val message = ControlMessage(
-              hMessage.getNetworkId,
-              hMessage.operations.head,
-              hMessage.getSource,
-              hMessage.destinations.head,
-              hMessage.getData,
-              hMessage.getRequest
-            )
-            message.getOperation.setCallType(CallType.ONE_WAY)
-            message.getData match {
-              case _: ParameterDescriptor =>
-                for (i <- 0 until getRuntimeContext.getExecutionConfig.getParallelism) {
-                  message.setDestination(new NodeId(NodeType.SPOKE, i))
-                  collector.collect(message)
-                }
-              case _ =>
-            }
-            counter = 0
-          } else counter += 1
+          val message = ControlMessage(
+            hMessage.getNetworkId,
+            hMessage.operations.head,
+            hMessage.getSource,
+            hMessage.destinations.head,
+            hMessage.getData,
+            hMessage.getRequest
+          )
+          message.getOperation.setCallType(CallType.ONE_WAY)
+          message.getData match {
+            case _: ParameterDescriptor =>
+              for (i <- 0 until getRuntimeContext.getExecutionConfig.getParallelism) {
+                message.setDestination(new NodeId(NodeType.SPOKE, i))
+                collector.collect(message)
+              }
+            case _ =>
+          }
         }
       }
     ).name("ModelUpdates")

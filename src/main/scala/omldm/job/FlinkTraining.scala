@@ -40,6 +40,7 @@ case class FlinkTraining(env: StreamExecutionEnvironment,
 
 
   val testing: Boolean = params.get("test", DefaultJobParameters.defaultTestParameter).toBoolean
+  val maxMsgParams: Int = params.get("maxMsgParams", DefaultJobParameters.defaultMaxMsgParams).toInt
   val jobName: String = params.get("jobName", DefaultJobParameters.defaultJobName)
 
 
@@ -65,9 +66,14 @@ case class FlinkTraining(env: StreamExecutionEnvironment,
         if (in.networkId == -1)
           for (worker <- 0 until getRuntimeContext.getExecutionConfig.getParallelism)
             out.collect(ControlMessage(-1, null, null, new NodeId(NodeType.SPOKE, worker), null, null))
-        else
-          for ((rpc, dest) <- in.operations zip in.destinations)
+        else {
+//          if (in.operations.length > 1)
+//            println("-> Broadcast message detected.")
+          for ((rpc, dest) <- in.operations zip in.destinations) {
             out.collect(ControlMessage(in.getNetworkId, rpc, in.getSource, dest, in.getData, in.getRequest))
+//            println("-> Sent broadcast message to worker " + dest)
+          }
+        }
       }
     })
 
@@ -82,7 +88,7 @@ case class FlinkTraining(env: StreamExecutionEnvironment,
 
   /** The parallel learning procedure happens here. */
   val worker: DataStream[SpokeMessage] = trainingDataBlocks
-    .process(new FlinkSpoke[MLNodeGenerator](testing))
+    .process(new FlinkSpoke[MLNodeGenerator](testing, maxMsgParams))
     .name("FlinkSpoke")
 
   /** The coordinator operators, where the learners are merged. */

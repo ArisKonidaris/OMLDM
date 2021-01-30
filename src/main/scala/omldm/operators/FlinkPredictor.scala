@@ -2,7 +2,7 @@ package omldm.operators
 
 import ControlAPI.{DataInstance, Request}
 import BipartiteTopologyAPI._
-import BipartiteTopologyAPI.network.Node
+import BipartiteTopologyAPI.interfaces.Node
 import BipartiteTopologyAPI.operations.RemoteCallIdentifier
 import BipartiteTopologyAPI.sites.{NodeId, NodeType}
 import omldm.messages.{ControlMessage, SpokeMessage}

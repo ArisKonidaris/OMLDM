@@ -65,7 +65,6 @@ class StatisticsAggregateFunction()
       acc.stats.put(in._1, in._2)
     } else {
       if (!acc.stats.contains(in._1)) {
-        assert(acc.mlpHubIds.contains(in._2.getPipeline))
         assert(!acc.mlpHubIds(in._2.getPipeline).contains(in._1))
         acc.mlpHubIds(in._2.getPipeline) += in._1
         acc.stats.put(in._1, in._2)
@@ -84,6 +83,9 @@ class StatisticsAggregateFunction()
           result(mhi._1).setProtocol(acc.stats(hi).getProtocol)
         result(mhi._1).updateStats(acc.stats(hi))
       }
+      result(mhi._1).setBlocks(result(mhi._1).getBlocks / mhi._2.length)
+      result(mhi._1).setModels(result(mhi._1).getModels / mhi._2.length)
+      result(mhi._1).setFitted(result(mhi._1).getFitted / mhi._2.length)
     }
     result
   }

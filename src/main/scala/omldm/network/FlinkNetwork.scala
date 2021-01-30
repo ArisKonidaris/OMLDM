@@ -1,7 +1,7 @@
 package omldm.network
 
 import java.io.Serializable
-import BipartiteTopologyAPI.network.Network
+import BipartiteTopologyAPI.interfaces.Network
 import BipartiteTopologyAPI.operations.RemoteCallIdentifier
 import BipartiteTopologyAPI.sites.{NetworkDescriptor, NodeId, NodeType}
 import ControlAPI._

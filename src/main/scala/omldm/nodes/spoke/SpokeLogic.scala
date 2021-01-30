@@ -3,7 +3,7 @@ package omldm.nodes.spoke
 import java.io.Serializable
 
 import BipartiteTopologyAPI.BufferingWrapper
-import BipartiteTopologyAPI.network.Mergeable
+import BipartiteTopologyAPI.interfaces.Mergeable
 import mlAPI.dataBuffers.DataSet
 import org.apache.flink.api.common.state.ListState
 import org.apache.flink.streaming.api.checkpoint.CheckpointedFunction

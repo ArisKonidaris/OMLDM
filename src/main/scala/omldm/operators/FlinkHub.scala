@@ -5,7 +5,7 @@ import BipartiteTopologyAPI.sites.{NodeId, NodeType}
 import omldm.Job.trainingStats
 import ControlAPI.{Request, Statistics}
 import mlAPI.mlParameterServers.MLParameterServer
-import mlAPI.protocols.ProtocolStatistics
+import mlAPI.protocols.statistics.ProtocolStatistics
 import omldm.messages.{HubMessage, SpokeMessage}
 import omldm.network.FlinkNetwork
 import omldm.nodes.hub.HubLogic
@@ -19,6 +19,7 @@ import org.apache.flink.util.Collector
 
 import scala.reflect.Manifest
 import scala.util.control.Breaks.{break, breakable}
+import scala.collection.JavaConverters._
 
 class FlinkHub[G <: NodeGenerator](val test: Boolean)(implicit man: Manifest[G])
   extends HubLogic[SpokeMessage, HubMessage] {
@@ -66,9 +67,9 @@ class FlinkHub[G <: NodeGenerator](val test: Boolean)(implicit man: Manifest[G])
                 throw new RuntimeException(s"Unsupported request on Hub ${network + "_" + ctx.getCurrentKey}.")
             }
           case null =>
-            if (state.get == null) {
+            if (state.get == null)
               cache add workerMessage
-            } else {
+            else {
               breakable {
                 while (true) {
                   cache.get match {
@@ -82,10 +83,10 @@ class FlinkHub[G <: NodeGenerator](val test: Boolean)(implicit man: Manifest[G])
               state add(workerMessage, ctx, out)
               if (test) {
                 println("Status: " + state.get().getNode.asInstanceOf[MLParameterServer[_, _]].getNumberOfFittedData)
-//                println(state.get().getNode.asInstanceOf[MLParameterServer[_, _]].protocolStatistics)
+//                println(state.get().getNode.asInstanceOf[MLParameterServer[_, _]].getProtocolStatistics)
                 val mlpId: String = state.get().getNetwork.describe().getNetworkId + "_" + ctx.getCurrentKey
                 val mlpStats = {
-                  val s: ProtocolStatistics = state.get().getNode.asInstanceOf[MLParameterServer[_, _]].protocolStatistics
+                  val s = state.get().getNode.asInstanceOf[MLParameterServer[_, _]].getProtocolStatistics
                   new Statistics(
                     mlpId.split("_")(0).toInt,
                     s.getProtocol,
@@ -115,9 +116,9 @@ class FlinkHub[G <: NodeGenerator](val test: Boolean)(implicit man: Manifest[G])
       NodeType.HUB,
       message.getNetworkId,
       parallelism,
-      if (parallelTraining && request.getTrainingConfiguration.containsKey("HubParallelism"))
-        request.getTrainingConfiguration.get("HubParallelism").asInstanceOf[Double].toInt
-      else
+      if (parallelTraining && request.getTrainingConfiguration.containsKey("HubParallelism")) {
+        mlAPI.utils.Parsing.IntegerParsing(request.getTrainingConfiguration.asScala,"HubParallelism", 1)
+      } else
         1
     )
 
@@ -134,7 +135,6 @@ class FlinkHub[G <: NodeGenerator](val test: Boolean)(implicit man: Manifest[G])
       flinkNetwork
     )
     state add(SpokeMessage(0, null, null, null, genWrapper, null), ctx, out)
-
   }
 
 }
