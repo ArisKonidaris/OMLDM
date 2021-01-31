@@ -5,7 +5,7 @@ import BipartiteTopologyAPI.interfaces.Network
 import BipartiteTopologyAPI.operations.RemoteCallIdentifier
 import BipartiteTopologyAPI.sites.{NetworkDescriptor, NodeId, NodeType}
 import ControlAPI._
-import omldm.Job.{queryResponse, predictions}
+import omldm.Job.mlNodeSideOutput
 import omldm.messages.{HubMessage, SpokeMessage}
 import org.apache.flink.streaming.api.functions.KeyedProcessFunction
 import org.apache.flink.streaming.api.functions.co.CoProcessFunction
@@ -52,7 +52,7 @@ case class FlinkNetwork[InMsg <: Serializable, CtrlMsg <: Serializable, OutMsg <
             message.asInstanceOf[Array[Any]](0) match {
               case qResp: QueryResponse =>
                 if (qResp.getResponseId == -1)
-                  context.output(queryResponse, qResp)
+                  context.output(mlNodeSideOutput, qResp)
                 else {
                   val maxParamBucketSize = 10000
                   val bucketedPar = mutable.HashMap[Int, util.Map[String, AnyRef]]()
@@ -108,7 +108,7 @@ case class FlinkNetwork[InMsg <: Serializable, CtrlMsg <: Serializable, OutMsg <
                     }
                   )
                   if (bucketedPar.size == 1)
-                    context.output(queryResponse, qResp)
+                    context.output(mlNodeSideOutput, qResp)
                   else {
                     for ((key, value) <- bucketedPar.toArray.sortBy(x => x._1)) {
                       val bucketResponse = {
@@ -145,16 +145,16 @@ case class FlinkNetwork[InMsg <: Serializable, CtrlMsg <: Serializable, OutMsg <
                           )
                         }
                       }
-                      context.output(queryResponse, bucketResponse)
+                      context.output(mlNodeSideOutput, bucketResponse)
                     }
                   }
                 }
-              case pred: Prediction => context.output(predictions, pred)
+              case pred: Prediction => context.output(mlNodeSideOutput, pred)
             }
           case NodeType.HUB =>
             message.asInstanceOf[Array[Any]](0) match {
-              case qResp: QueryResponse => keyedContext.output(queryResponse, qResp)
-              case pred: Prediction => keyedContext.output(predictions, pred)
+              case qResp: QueryResponse => keyedContext.output(mlNodeSideOutput, qResp)
+              case pred: Prediction => keyedContext.output(mlNodeSideOutput, pred)
             }
         }
       case dest: NodeId =>

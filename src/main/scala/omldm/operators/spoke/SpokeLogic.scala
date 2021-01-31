@@ -1,6 +1,4 @@
-package omldm.nodes.spoke
-
-import java.io.Serializable
+package omldm.operators.spoke
 
 import BipartiteTopologyAPI.BufferingWrapper
 import BipartiteTopologyAPI.interfaces.Mergeable
@@ -9,6 +7,7 @@ import org.apache.flink.api.common.state.ListState
 import org.apache.flink.streaming.api.checkpoint.CheckpointedFunction
 import org.apache.flink.streaming.api.functions.co.CoProcessFunction
 
+import java.io.Serializable
 import scala.collection.mutable.ListBuffer
 
 /** An abstract operators of a stateful remote spoke.

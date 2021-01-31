@@ -1,14 +1,12 @@
-package omldm.operators
+package omldm.operators.hub
 
 import BipartiteTopologyAPI.GenericWrapper
 import BipartiteTopologyAPI.sites.{NodeId, NodeType}
-import omldm.Job.trainingStats
 import ControlAPI.{Request, Statistics}
 import mlAPI.mlParameterServers.MLParameterServer
-import mlAPI.protocols.statistics.ProtocolStatistics
+import omldm.Job.trainingStats
 import omldm.messages.{HubMessage, SpokeMessage}
 import omldm.network.FlinkNetwork
-import omldm.nodes.hub.HubLogic
 import omldm.state.{DataAggregateFunction, NodeAccumulator, NodeAggregateFunction, SpokeMessageAccumulator}
 import omldm.utils.generators.NodeGenerator
 import org.apache.flink.api.common.state._
@@ -17,9 +15,9 @@ import org.apache.flink.streaming.api.functions.KeyedProcessFunction
 import org.apache.flink.streaming.api.scala.createTypeInformation
 import org.apache.flink.util.Collector
 
+import scala.collection.JavaConverters._
 import scala.reflect.Manifest
 import scala.util.control.Breaks.{break, breakable}
-import scala.collection.JavaConverters._
 
 class FlinkHub[G <: NodeGenerator](val test: Boolean)(implicit man: Manifest[G])
   extends HubLogic[SpokeMessage, HubMessage] {

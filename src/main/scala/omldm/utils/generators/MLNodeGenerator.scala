@@ -3,7 +3,6 @@ package omldm.utils.generators
 import BipartiteTopologyAPI.NodeInstance
 import ControlAPI.Request
 import mlAPI.mlParameterServers.proto.{AsynchronousParameterServer, EASGDParameterServer, FGMParameterServer, GMParameterServer, SSPParameterServer, SimplePS, SynchronousParameterServer}
-import mlAPI.mlworkers.MLPredictor
 import mlAPI.mlworkers.worker.proto.{AsynchronousWorker, EASGDWorker, FGMWorker, GMWorker, SSPWorker, SingleWorker, SynchronousWorker}
 
 import scala.collection.mutable
@@ -74,11 +73,4 @@ case class MLNodeGenerator() extends NodeGenerator {
     }
   }
 
-  override def generatePredictorNode(request: Request): NodeInstance[_, _] = {
-    try {
-      new MLPredictor().configureWorker(request)
-    } catch {
-      case e: Exception => throw new RuntimeException("Something went wrong while creating an ML Predictor Node.", e)
-    }
-  }
 }

@@ -1,32 +1,31 @@
-package omldm.operators
+package omldm.operators.spoke
 
-import java.io.Serializable
 import BipartiteTopologyAPI.BufferingWrapper
 import BipartiteTopologyAPI.interfaces.Node
 import BipartiteTopologyAPI.operations.RemoteCallIdentifier
 import BipartiteTopologyAPI.sites.{NodeId, NodeType}
 import ControlAPI.Request
 import mlAPI.dataBuffers.DataSet
-import mlAPI.math.Point
+import mlAPI.math.{ForecastingPoint, TrainingPoint, UsablePoint}
 import mlAPI.utils.Parsing
 import omldm.messages.{ControlMessage, SpokeMessage}
 import omldm.network.FlinkNetwork
-import omldm.nodes.spoke.SpokeLogic
 import omldm.utils.generators.NodeGenerator
 import org.apache.flink.api.common.state.{ListState, ListStateDescriptor}
 import org.apache.flink.api.common.typeinfo.{TypeHint, TypeInformation}
 import org.apache.flink.runtime.state.{FunctionInitializationContext, FunctionSnapshotContext}
 import org.apache.flink.streaming.api.functions.co.CoProcessFunction
 import org.apache.flink.util.Collector
-import scala.collection.JavaConverters._
 
+import java.io.Serializable
+import scala.collection.JavaConverters._
 import scala.collection.mutable.ListBuffer
 import scala.reflect.Manifest
 import scala.util.Random
 
 /** A CoFlatMap Flink Function modelling a worker request in a star distributed topology. */
 class FlinkSpoke[G <: NodeGenerator](val test: Boolean, val maxMsgParams: Int)(implicit man: Manifest[G])
-  extends SpokeLogic[Point, ControlMessage, SpokeMessage] {
+  extends SpokeLogic[UsablePoint, ControlMessage, SpokeMessage] {
 
   /** A counter used to sample data points for testing the score of the model. */
   private var count: Int = 0
@@ -35,15 +34,15 @@ class FlinkSpoke[G <: NodeGenerator](val test: Boolean, val maxMsgParams: Int)(i
   private var testingCount: Int = 0
 
   /** The test set buffer. */
-  private var testSet: DataSet[Point] = new DataSet[Point](500)
-  private var savedTestSet: ListState[DataSet[Point]] = _
+  private var testSet: DataSet[UsablePoint] = new DataSet[UsablePoint](500)
+  private var savedTestSet: ListState[DataSet[UsablePoint]] = _
 
   /** The nodes trained in the current Flink operator instance. */
-  private var nodes: ListState[scala.collection.mutable.Map[Int, BufferingWrapper[Point]]] = _
-  private var savedCache: ListState[DataSet[Point]] = _
+  private var nodes: ListState[scala.collection.mutable.Map[Int, BufferingWrapper[UsablePoint]]] = _
+  private var savedCache: ListState[DataSet[UsablePoint]] = _
 
   private var collector: Collector[SpokeMessage] = _
-  private var context: CoProcessFunction[Point, ControlMessage, SpokeMessage]#Context = _
+  private var context: CoProcessFunction[UsablePoint, ControlMessage, SpokeMessage]#Context = _
 
   Random.setSeed(25)
 
@@ -56,17 +55,20 @@ class FlinkSpoke[G <: NodeGenerator](val test: Boolean, val maxMsgParams: Int)(i
    * @param data A data point for training.
    * @param out  The process collector.
    */
-  override def processElement1(data: Point,
-                               ctx: CoProcessFunction[Point, ControlMessage, SpokeMessage]#Context,
+  override def processElement1(data: UsablePoint,
+                               ctx: CoProcessFunction[UsablePoint, ControlMessage, SpokeMessage]#Context,
                                out: Collector[SpokeMessage]): Unit = {
     collector = out
     context = ctx
     if (state.nonEmpty) {
       if (cache.nonEmpty) {
         cache.append(data)
-        while (cache.nonEmpty) handleData(cache.pop.get)
-      } else handleData(data)
-    } else cache.append(data)
+        while (cache.nonEmpty)
+          handleData(cache.pop.get)
+      } else
+        handleData(data)
+    } else
+      cache.append(data)
 
     // For calculating the performance of the training procedure.
     if (test) {
@@ -78,29 +80,38 @@ class FlinkSpoke[G <: NodeGenerator](val test: Boolean, val maxMsgParams: Int)(i
     }
   }
 
-  private def handleData(data: Serializable): Unit = {
-    // Train or test point.
+  private def handleData(data: UsablePoint): Unit = {
     if (getRuntimeContext.getIndexOfThisSubtask == 0) {
-      if (count >= 8) {
-        testSet.append(data.asInstanceOf[Point]) match {
-          case Some(point: Serializable) => for ((_, node: Node) <- state) node.receiveTuple(Array[Any](point))
-          case None =>
-        }
-      } else
-        for ((_, node: Node) <- state) node.receiveTuple(Array[Any](data))
-      count += 1
-      if (count == 10) count = 0
+      data match {
+        case trainingPoint: TrainingPoint =>
+          if (count >= 8) {
+            testSet.append(trainingPoint) match {
+              case Some(point: Serializable) => for ((_, node: Node) <- state) node.receiveTuple(Array[Any](point))
+              case None =>
+            }
+          } else
+            for ((_, node: Node) <- state) node.receiveTuple(Array[Any](trainingPoint))
+          count += 1
+          if (count == 10)
+            count = 0
+        case forecastingPoint: ForecastingPoint => for ((_, node: Node) <- state) node.receiveTuple(Array[Any](forecastingPoint))
+      }
     } else {
-      if (testSet.nonEmpty) {
-        testSet.append(data.asInstanceOf[Point]) match {
-          case Some(point: Serializable) => for ((_, node: Node) <- state) node.receiveTuple(Array[Any](point))
-          case None =>
-        }
-        while (testSet.nonEmpty) {
-          val point = testSet.pop.get
-          for ((_, node: Node) <- state) node.receiveTuple(Array[Any](point))
-        }
-      } else for ((_, node: Node) <- state) node.receiveTuple(Array[Any](data))
+      data match {
+        case trainingPoint: TrainingPoint =>
+          if (testSet.nonEmpty) {
+            testSet.append(trainingPoint) match {
+              case Some(point: Serializable) => for ((_, node: Node) <- state) node.receiveTuple(Array[Any](point))
+              case None =>
+            }
+            while (testSet.nonEmpty) {
+              val point = testSet.pop.get
+              for ((_, node: Node) <- state) node.receiveTuple(Array[Any](point))
+            }
+          } else
+            for ((_, node: Node) <- state) node.receiveTuple(Array[Any](data))
+        case forecastingPoint: ForecastingPoint => for ((_, node: Node) <- state) node.receiveTuple(Array[Any](forecastingPoint))
+      }
     }
   }
 
@@ -113,7 +124,7 @@ class FlinkSpoke[G <: NodeGenerator](val test: Boolean, val maxMsgParams: Int)(i
    * @param out     The process function collector
    */
   def processElement2(message: ControlMessage,
-                      ctx: CoProcessFunction[Point, ControlMessage, SpokeMessage]#Context,
+                      ctx: CoProcessFunction[UsablePoint, ControlMessage, SpokeMessage]#Context,
                       out: Collector[SpokeMessage]): Unit = {
     message match {
       case ControlMessage(network, operation, source, destination, data, request) =>
@@ -155,7 +166,7 @@ class FlinkSpoke[G <: NodeGenerator](val test: Boolean, val maxMsgParams: Int)(i
                         req.getTrainingConfiguration.replace("HubParallelism", 1.asInstanceOf[AnyRef])
                         hubParallelism = 1
                       }
-                      val flinkNetwork = FlinkNetwork[Point, ControlMessage, SpokeMessage](
+                      val flinkNetwork = FlinkNetwork[UsablePoint, ControlMessage, SpokeMessage](
                         NodeType.SPOKE,
                         network,
                         parallelism,
@@ -236,18 +247,18 @@ class FlinkSpoke[G <: NodeGenerator](val test: Boolean, val maxMsgParams: Int)(i
   override def initializeState(context: FunctionInitializationContext): Unit = {
 
     nodes = context.getOperatorStateStore.getListState(
-      new ListStateDescriptor[scala.collection.mutable.Map[Int, BufferingWrapper[Point]]]("node",
-        TypeInformation.of(new TypeHint[scala.collection.mutable.Map[Int, BufferingWrapper[Point]]]() {}))
+      new ListStateDescriptor[scala.collection.mutable.Map[Int, BufferingWrapper[UsablePoint]]]("node",
+        TypeInformation.of(new TypeHint[scala.collection.mutable.Map[Int, BufferingWrapper[UsablePoint]]]() {}))
     )
 
     savedTestSet = context.getOperatorStateStore.getListState(
-      new ListStateDescriptor[DataSet[Point]]("savedTestSet",
-        TypeInformation.of(new TypeHint[DataSet[Point]]() {}))
+      new ListStateDescriptor[DataSet[UsablePoint]]("savedTestSet",
+        TypeInformation.of(new TypeHint[DataSet[UsablePoint]]() {}))
     )
 
     savedCache = context.getOperatorStateStore.getListState(
-      new ListStateDescriptor[DataSet[Point]]("savedCache",
-        TypeInformation.of(new TypeHint[DataSet[Point]]() {}))
+      new ListStateDescriptor[DataSet[UsablePoint]]("savedCache",
+        TypeInformation.of(new TypeHint[DataSet[UsablePoint]]() {}))
     )
 
     // ============================================ Restart strategy ===================================================
@@ -258,9 +269,9 @@ class FlinkSpoke[G <: NodeGenerator](val test: Boolean, val maxMsgParams: Int)(i
 
       state.clear()
 
-      var new_state = scala.collection.mutable.Map[Int, BufferingWrapper[Point]]()
+      var new_state = scala.collection.mutable.Map[Int, BufferingWrapper[UsablePoint]]()
       val it_pip = nodes.get.iterator
-      val remoteStates = ListBuffer[scala.collection.mutable.Map[Int, BufferingWrapper[Point]]]()
+      val remoteStates = ListBuffer[scala.collection.mutable.Map[Int, BufferingWrapper[UsablePoint]]]()
       while (it_pip.hasNext) {
         val next = it_pip.next
         if (next.nonEmpty)

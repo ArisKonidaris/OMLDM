@@ -1,12 +1,11 @@
-package omldm.nodes.hub
-
-import java.io.Serializable
+package omldm.operators.hub
 
 import BipartiteTopologyAPI.GenericWrapper
-import mlAPI.dataBuffers.DataSet
 import org.apache.flink.api.common.state.AggregatingState
 import org.apache.flink.streaming.api.functions.KeyedProcessFunction
 import org.apache.flink.util.Collector
+
+import java.io.Serializable
 
 /** Basic abstract operator of a coordinator in Flink.
   *

@@ -1,7 +1,7 @@
 package omldm.utils.parsers.dataStream
 
 import ControlAPI.DataInstance
-import mlAPI.math.{DenseVector, LabeledPoint, Point, UnlabeledPoint, Vector}
+import mlAPI.math.{DenseVector, ForecastingPoint, LabeledPoint, LearningPoint, TrainingPoint, UnlabeledPoint, UsablePoint, Vector}
 import org.apache.flink.api.common.functions.RichFlatMapFunction
 import org.apache.flink.configuration.Configuration
 import org.apache.flink.util.Collector
@@ -11,17 +11,13 @@ import scala.collection.JavaConverters._
 /**
   * Converts a [[DataInstance]] object to a [[Point]] object.
   */
-class DataPointParser() extends RichFlatMapFunction[DataInstance, Point] {
+class DataPointParser() extends RichFlatMapFunction[DataInstance, UsablePoint] {
 
-  override def flatMap(input: DataInstance, collector: Collector[Point]): Unit = {
-
-    // TODO: Remove this line after the implementation of ML methods that use Discrete Features.
-    if (input.getNumericalFeatures == null || input.getDiscreteFeatures != null || input.getCategoricalFeatures != null)
+  override def flatMap(input: DataInstance, collector: Collector[UsablePoint]): Unit = {
+    if (input.getNumericalFeatures == null && input.getDiscreteFeatures == null && input.getCategoricalFeatures == null)
       return
-
     {
-      if (input.getOperation.equals("training")) {
-
+      val point: LearningPoint = {
         val features: (Vector, Vector, Array[String]) = {
           (
             if (input.getNumericalFeatures == null)
@@ -38,18 +34,24 @@ class DataPointParser() extends RichFlatMapFunction[DataInstance, Point] {
               input.getCategoricalFeatures.asScala.toArray
           )
         }
-
         if (input.getTarget != null)
-          Some(LabeledPoint(input.getTarget, features._1, features._2, features._3))
+          LabeledPoint(input.getTarget, features._1, features._2, features._3, input.toString)
         else
-          Some(UnlabeledPoint(features._1, features._2, features._3))
-
-      } else None
+          UnlabeledPoint(features._1, features._2, features._3, input.toString)
+      }
+      if (input.getOperation.equals("training")) {
+        point.dataInstance = null
+        Some(TrainingPoint(point))
+      } else if (input.getOperation.equals("forecasting"))
+        Some(ForecastingPoint(point.asUnlabeledPoint))
+      else
+        None
     } match {
-      case Some(point: Point) => collector.collect(point)
-      case _ => println("Unknown DataInstance type.")
+      case Some(point: TrainingPoint) => collector.collect(point)
+      case Some(point: ForecastingPoint) => collector.collect(point)
+      case None => println("Unknown Point type.")
+      case _ => println("Unknown Point type.")
     }
-
   }
 
   override def open(parameters: Configuration): Unit = {}

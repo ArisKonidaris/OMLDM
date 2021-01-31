@@ -1,9 +1,9 @@
 package omldm
 
 import java.util.Optional
-import ControlAPI.{DataInstance, Prediction, QueryResponse, Request, Statistics}
-import mlAPI.math.Point
-import omldm.job.{FlinkPrediction, FlinkTraining}
+import ControlAPI.{CountableSerial, DataInstance, Prediction, QueryResponse, Request, Statistics}
+import mlAPI.math.UsablePoint
+import omldm.job.FlinkLearning
 import omldm.messages.{ControlMessage, HubMessage}
 import omldm.utils.KafkaUtils.createProperties
 import omldm.utils.kafkaPartitioners.FlinkHubMessagePartitioner
@@ -25,14 +25,13 @@ object Job {
 
   val trainingStats: OutputTag[(String, Statistics)] = OutputTag[(String, Statistics)]("trainingStats")
   val terminationStats: OutputTag[HubMessage] = OutputTag[HubMessage]("terminationStats")
-  val queryResponse: OutputTag[QueryResponse] = OutputTag[QueryResponse]("QueryResponse")
-  val predictions: OutputTag[Prediction] = OutputTag[Prediction]("predictionStream")
+  val mlNodeSideOutput: OutputTag[CountableSerial] = OutputTag[CountableSerial]("SpokeSideOutput")
 
-  def builtTrainingJob(env: StreamExecutionEnvironment,
-                       requests: DataStream[ControlMessage],
-                       psMessages: DataStream[HubMessage]
-                      )(implicit params: ParameterTool)
-  : (StreamExecutionEnvironment, DataStream[HubMessage], DataStream[QueryResponse]) = {
+  def runOMLDMJob(env: StreamExecutionEnvironment,
+                  requests: DataStream[ControlMessage],
+                  psMessages: DataStream[HubMessage]
+                   )(implicit params: ParameterTool)
+  : (StreamExecutionEnvironment, DataStream[HubMessage], DataStream[QueryResponse], DataStream[Prediction]) = {
 
     /** The incoming training data. */
     val trainingSource: DataStream[DataInstance] = env.addSource(
@@ -43,16 +42,33 @@ object Job {
       .flatMap(DataInstanceParser())
       .name("TrainingSource")
 
-    /** Parsing the training data */
-    val trainingData: DataStream[Point] = trainingSource
+    /** The incoming forecasting data. */
+    val forecastingSource: DataStream[DataInstance] = env.addSource(
+      new FlinkKafkaConsumer[String](params.get("forecastingDataTopic", "forecastingData"),
+        new SimpleStringSchema(),
+        createProperties("forecastingDataAddr", "forecastingDataConsumer"))
+        .setStartFromEarliest())
+      .flatMap(DataInstanceParser())
+      .name("ForecastingSource")
+
+    /** Parsing the training data. */
+    val trainingData: DataStream[UsablePoint] = trainingSource
       .flatMap(new DataPointParser)
-      .name("DataParsing")
+      .name("TrainingDataParsing")
 
-    /** Training */
-    val distributedTraining = FlinkTraining(env, trainingData, requests, psMessages)
-    val (coordinator, responses) = distributedTraining.getJobOutput
+    /** Parsing the forecasting data. */
+    val forecastingData: DataStream[UsablePoint] = forecastingSource
+      .flatMap(new DataPointParser)
+      .name("ForecastingDataParsing")
 
-    /** The Kafka iteration for emulating parameter server messages */
+    /** The unified data set stream for training and prediction. */
+    val dataStream: DataStream[UsablePoint] = trainingData.union(forecastingData)
+
+    /** Training & Prediction. */
+    val distributedLearning = FlinkLearning(env, dataStream, requests, psMessages)
+    val (coordinator, responses, predictions) = distributedLearning.getJobOutput
+
+    /** The Kafka iteration for emulating parameter server messages. */
     coordinator
       .addSink(new FlinkKafkaProducer[HubMessage](
         params.get("psMessagesTopic", "psMessages"), // target topic
@@ -74,27 +90,16 @@ object Job {
         new SimpleStringSchema()))
       .name("ResponsesSink")
 
-    (env, coordinator, responses)
-  }
+    /** A Kafka Sink for the predictions. */
+    predictions
+      .map(x => x.toString)
+      .addSink(new FlinkKafkaProducer[String](
+        params.get("predictionsAddr", "localhost:9092"), // broker list
+        params.get("predictionsTopic", "predictions"), // target topic
+        new SimpleStringSchema()))
+      .name("PredictionsSink")
 
-  def builtPredictionJob(env: StreamExecutionEnvironment,
-                         request: DataStream[ControlMessage],
-                         updates: DataStream[HubMessage])
-                        (implicit params: ParameterTool)
-  : (StreamExecutionEnvironment, DataStream[Prediction]) = {
-
-    /** The incoming forecasting data. */
-    val forecastingSource: DataStream[DataInstance] = env.addSource(
-      new FlinkKafkaConsumer[String](params.get("forecastingDataTopic", "forecastingData"),
-        new SimpleStringSchema(),
-        createProperties("forecastingDataAddr", "forecastingDataConsumer"))
-        .setStartFromEarliest())
-      .flatMap(DataInstanceParser())
-      .name("ForecastingSource")
-
-    val distributedPrediction = FlinkPrediction(env, forecastingSource, request, updates)
-
-    (env, distributedPrediction.getJobOutput)
+    (env, coordinator, responses, predictions)
   }
 
   def main(args: Array[String]) {
@@ -108,7 +113,6 @@ object Job {
     utils.CommonUtils.registerFlinkMLTypes(env)
     env.setStreamTimeCharacteristic(TimeCharacteristic.IngestionTime)
     if (params.get("checkpointing", "false").toBoolean) Checkpointing.enableCheckpointing()
-    val mode = params.get("mode", DefaultJobParameters.mode)
 
 
     ////////////////////////////////////////////// Kafka Sources ///////////////////////////////////////////////////////
@@ -144,15 +148,11 @@ object Job {
       .name("RequestParsing")
 
 
-    ////////////////////////////////////////////// Building the Job ////////////////////////////////////////////////////
+    ///////////////////////////////////////////////// Run the Job //////////////////////////////////////////////////////
 
 
-    if (mode.equals("training"))
-      builtTrainingJob(env, validRequest, psMessages)
-    else if (mode.equals("prediction"))
-      builtPredictionJob(env, validRequest, psMessages)
-    else
-      builtPredictionJob(env, validRequest, builtTrainingJob(env, validRequest, psMessages)._2)
+    runOMLDMJob(env, validRequest, psMessages)
+
 
     //////////////////////////////////////////// Execute OML Job ///////////////////////////////////////////////////////
 
