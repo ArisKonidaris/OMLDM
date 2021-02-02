@@ -11,10 +11,11 @@ class FlinkHubMessagePartitioner extends FlinkKafkaPartitioner[HubMessage] {
                          partitions: Array[Int]): Int = {
     if (record.networkId == -1)
       0
-    else
+    else {
       if (record.destinations.length == 1)
         record.destinations.head.getNodeId % partitions.length
       else
         record.networkId % partitions.length
+    }
   }
 }
