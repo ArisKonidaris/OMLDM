@@ -46,7 +46,7 @@ case class FlinkNetwork[InMsg <: Serializable, CtrlMsg <: Serializable, OutMsg <
 
   def split(entrySet: util.Set[util.Map.Entry[String, AnyRef]])
   : mutable.HashMap[Int, util.Map[String, AnyRef]] = {
-    val maxParamBucketSize = 500
+    val maxParamBucketSize = 10000
     val bucketedPar = mutable.HashMap[Int, util.Map[String, AnyRef]]()
     entrySet.forEach(
       entry => {
