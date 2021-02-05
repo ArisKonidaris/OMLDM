@@ -11,12 +11,16 @@ import omldm.utils.parsers.dataStream.DataPointParser
 import omldm.utils.parsers.requestStream.PipelineMap
 import omldm.utils.parsers.{DataInstanceParser, RequestParser}
 import omldm.utils.{Checkpointing, DefaultJobParameters}
+import org.apache.flink.api.common.restartstrategy.RestartStrategies
 import org.apache.flink.api.common.serialization.{SimpleStringSchema, TypeInformationSerializationSchema}
 import org.apache.flink.api.java.utils.ParameterTool
 import org.apache.flink.streaming.api.TimeCharacteristic
 import org.apache.flink.streaming.api.scala.{DataStream, OutputTag, StreamExecutionEnvironment, createTypeInformation}
+import org.apache.flink.api.common.time.Time
 import org.apache.flink.streaming.connectors.kafka.partitioner.FlinkKafkaPartitioner
 import org.apache.flink.streaming.connectors.kafka.{FlinkKafkaConsumer, FlinkKafkaProducer}
+
+import java.util.concurrent.TimeUnit
 
 /**
  * The Online Machine Learning and Data Mining component.
@@ -25,7 +29,8 @@ object Job {
 
   val trainingStats: OutputTag[(String, Statistics)] = OutputTag[(String, Statistics)]("trainingStats")
   val terminationStats: OutputTag[HubMessage] = OutputTag[HubMessage]("terminationStats")
-  val mlNodeSideOutput: OutputTag[CountableSerial] = OutputTag[CountableSerial]("SpokeSideOutput")
+  val spokeSideOutput: OutputTag[CountableSerial] = OutputTag[CountableSerial]("SpokeSideOutput")
+  val hubSideOutput: OutputTag[CountableSerial] = OutputTag[CountableSerial]("HubSideOutput")
 
   def runOMLDMJob(env: StreamExecutionEnvironment,
                   requests: DataStream[ControlMessage],
@@ -110,6 +115,10 @@ object Job {
 
     env.getConfig.setGlobalJobParameters(params)
     env.setParallelism(params.get("parallelism", DefaultJobParameters.defaultParallelism).toInt)
+    env.setRestartStrategy(RestartStrategies.fixedDelayRestart(
+          3, // number of restart attempts
+          Time.of(10, TimeUnit.SECONDS) // delay
+        ))
     utils.CommonUtils.registerFlinkMLTypes(env)
     env.setStreamTimeCharacteristic(TimeCharacteristic.IngestionTime)
     if (params.get("checkpointing", "false").toBoolean) Checkpointing.enableCheckpointing()

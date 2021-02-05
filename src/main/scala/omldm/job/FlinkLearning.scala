@@ -1,7 +1,7 @@
 package omldm.job
 
 import BipartiteTopologyAPI.sites.{NodeId, NodeType}
-import omldm.Job.{mlNodeSideOutput, terminationStats, trainingStats}
+import omldm.Job.{spokeSideOutput, hubSideOutput, terminationStats, trainingStats}
 import ControlAPI.{JobStatistics, Prediction, QueryResponse, Statistics}
 import mlAPI.math.UsablePoint
 import omldm.messages.{ControlMessage, HubMessage, SpokeMessage}
@@ -85,22 +85,24 @@ case class FlinkLearning(env: StreamExecutionEnvironment,
     .process(new FlinkSpoke[MLNodeGenerator](testing, maxMsgParams))
     .name("FlinkSpoke")
 
-  /** The query responses of the spokes. */
-  val queryResponses: DataStream[QueryResponse] = worker.getSideOutput(mlNodeSideOutput)
-    .filter(x => x.isInstanceOf[QueryResponse])
-    .map(x => x.asInstanceOf[QueryResponse])
-
-  /** The predictions of the spokes. */
-  val predictions: DataStream[Prediction] = worker.getSideOutput(mlNodeSideOutput)
-    .filter(x => x.isInstanceOf[Prediction])
-    .map(x => x.asInstanceOf[Prediction])
-
   /** The coordinator operators, where the learners are merged. */
   val coordinator: DataStream[HubMessage] = worker
     .filter(x => x.networkId != -1)
     .keyBy((x: SpokeMessage) => x.getNetworkId + "_" + x.getDestination.getNodeId)
     .process(new FlinkHub[MLNodeGenerator](testing))
     .name("FlinkHub")
+
+  /** The predictions of the spokes. */
+  val predictions: DataStream[Prediction] = worker.getSideOutput(spokeSideOutput)
+    .filter(x => x.isInstanceOf[Prediction])
+    .union(coordinator.getSideOutput(hubSideOutput).filter(x => x.isInstanceOf[Prediction]))
+    .map(x => x.asInstanceOf[Prediction])
+
+  /** The query responses of the spokes. */
+  val queryResponses: DataStream[QueryResponse] = worker.getSideOutput(spokeSideOutput)
+    .filter(x => x.isInstanceOf[QueryResponse])
+    .union(coordinator.getSideOutput(hubSideOutput).filter(x => x.isInstanceOf[QueryResponse]))
+    .map(x => x.asInstanceOf[QueryResponse])
 
   /** This is activated only when testing the performance of the OMLDM component. */
   val performance: DataStream[JobStatistics] = coordinator.getSideOutput(trainingStats)

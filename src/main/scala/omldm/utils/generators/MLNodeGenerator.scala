@@ -2,8 +2,8 @@ package omldm.utils.generators
 
 import BipartiteTopologyAPI.NodeInstance
 import ControlAPI.Request
-import mlAPI.mlParameterServers.proto.{AsynchronousParameterServer, EASGDParameterServer, FGMParameterServer, GMParameterServer, SSPParameterServer, SimplePS, SynchronousParameterServer}
-import mlAPI.mlworkers.worker.proto.{AsynchronousWorker, EASGDWorker, FGMWorker, GMWorker, SSPWorker, SingleWorker, SynchronousWorker}
+import mlAPI.mlParameterServers.proto.{AsynchronousParameterServer, CentralizedMLServer, EASGDParameterServer, FGMParameterServer, GMParameterServer, SSPParameterServer, SimplePS, SynchronousParameterServer}
+import mlAPI.mlworkers.worker.proto.{AsynchronousWorker, EASGDWorker, FGMWorker, ForwardingWorker, GMWorker, SSPWorker, SingleWorker, SynchronousWorker}
 
 import scala.collection.mutable
 import scala.collection.JavaConverters._
@@ -24,6 +24,7 @@ case class MLNodeGenerator() extends NodeGenerator {
         try {
           config.get("protocol").asInstanceOf[Option[String]] match {
             case Some("CentralizedTraining") => SingleWorker(maxMsgParams).configureWorker(request)
+            case Some("SingleLearner") => ForwardingWorker()
             case Some("Asynchronous") => AsynchronousWorker(maxMsgParams).configureWorker(request)
             case Some("Synchronous") => SynchronousWorker(maxMsgParams).configureWorker(request)
             case Some("SSP") => SSPWorker(maxMsgParams = maxMsgParams).configureWorker(request)
@@ -52,6 +53,7 @@ case class MLNodeGenerator() extends NodeGenerator {
         try {
           config.get("protocol").asInstanceOf[Option[String]] match {
             case Some("CentralizedTraining") => SimplePS().configureParameterServer(request)
+            case Some("SingleLearner") => CentralizedMLServer().configureParameterServer(request)
             case Some("Asynchronous") => AsynchronousParameterServer().configureParameterServer(request)
             case Some("Synchronous") => SynchronousParameterServer().configureParameterServer(request)
             case Some("SSP") => SSPParameterServer().configureParameterServer(request)

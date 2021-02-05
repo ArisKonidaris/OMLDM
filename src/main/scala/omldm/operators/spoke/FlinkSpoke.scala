@@ -177,16 +177,23 @@ class FlinkSpoke[G <: NodeGenerator](val test: Boolean, val maxMsgParams: Int)(i
                         network -> new BufferingWrapper(
                           new NodeId(NodeType.SPOKE, getRuntimeContext.getIndexOfThisSubtask),
                           {
-                            if (parallelTraining)
+                            if (parallelTraining) {
+                              req.getLearner.name match {
+                                case "HT" =>
+                                  req.getTrainingConfiguration.replace("protocol", "SingleLearner".asInstanceOf[AnyRef])
+                                case "K-means" =>
+                                  req.getTrainingConfiguration.replace("protocol", "SingleLearner".asInstanceOf[AnyRef])
+                                case _ =>
+                              }
                               nodeFactory.generateSpokeNode(req)
-                            else {
+                            } else {
                               req.getTrainingConfiguration.replace("protocol", "CentralizedTraining".asInstanceOf[AnyRef])
                               nodeFactory.generateSpokeNode(req)
                             }
                           },
                           flinkNetwork)
                         )
-                      if (getRuntimeContext.getIndexOfThisSubtask == 0)
+                      if (getRuntimeContext.getIndexOfThisSubtask == 0 && parallelTraining)
                         for (i <- 0 until hubParallelism)
                           out.collect(SpokeMessage(network, null, null, new NodeId(NodeType.HUB, i), null, req))
                     }

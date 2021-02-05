@@ -4,6 +4,7 @@ import BipartiteTopologyAPI.GenericWrapper
 import BipartiteTopologyAPI.sites.{NodeId, NodeType}
 import ControlAPI.{Request, Statistics}
 import mlAPI.mlParameterServers.MLParameterServer
+import mlAPI.mlParameterServers.proto.CentralizedMLServer
 import omldm.Job.trainingStats
 import omldm.messages.{HubMessage, SpokeMessage}
 import omldm.network.FlinkNetwork
@@ -73,26 +74,47 @@ class FlinkHub[G <: NodeGenerator](val test: Boolean)(implicit man: Manifest[G])
                   cache.get match {
                     case Some(mess: SpokeMessage) =>
                       state add(mess, ctx, out)
-                      println("Status: " + state.get().getNode.asInstanceOf[MLParameterServer[_, _]].getNumberOfFittedData)
+                      state.get().getNode match {
+                        case ps: MLParameterServer[_, _] => println("Status: " + ps.getNumberOfFittedData)
+                        case cl: CentralizedMLServer => println("Status: " + cl.fitted)
+                      }
+//                      println("Status: " + state.get().getNode.asInstanceOf[MLParameterServer[_, _]].getNumberOfFittedData)
                     case _ => break
                   }
                 }
               }
               state add(workerMessage, ctx, out)
               if (test) {
-                println("Status: " + state.get().getNode.asInstanceOf[MLParameterServer[_, _]].getNumberOfFittedData)
+                state.get().getNode match {
+                  case ps: MLParameterServer[_, _] => println("Status: " + ps.getNumberOfFittedData)
+                  case cl: CentralizedMLServer => println("Status: " + cl.fitted)
+                }
+//                println("Status: " + state.get().getNode.asInstanceOf[MLParameterServer[_, _]].getNumberOfFittedData)
 //                println(state.get().getNode.asInstanceOf[MLParameterServer[_, _]].getProtocolStatistics)
                 val mlpId: String = state.get().getNetwork.describe().getNetworkId + "_" + ctx.getCurrentKey
                 val mlpStats = {
-                  val s = state.get().getNode.asInstanceOf[MLParameterServer[_, _]].getProtocolStatistics
-                  new Statistics(
-                    mlpId.split("_")(0).toInt,
-                    s.getProtocol,
-                    s.getModelsShipped,
-                    s.getBytesShipped,
-                    s.getNumOfBlocks,
-                    state.get().getNode.asInstanceOf[MLParameterServer[_, _]].getNumberOfFittedData
-                  )
+                  state.get().getNode match {
+                    case ps: MLParameterServer[_, _] =>
+                      val s = ps.getProtocolStatistics
+                      new Statistics(
+                        mlpId.split("_")(0).toInt,
+                        s.getProtocol,
+                        s.getModelsShipped,
+                        s.getBytesShipped,
+                        s.getNumOfBlocks,
+                        state.get().getNode.asInstanceOf[MLParameterServer[_, _]].getNumberOfFittedData
+                      )
+                    case cl: CentralizedMLServer =>
+                      val s = cl.getProtocolStatistics
+                      new Statistics(
+                        mlpId.split("_")(0).toInt,
+                        s.getProtocol,
+                        s.getModelsShipped,
+                        s.getBytesShipped,
+                        s.getNumOfBlocks,
+                        cl.fitted
+                      )
+                  }
                 }
                 ctx.output(trainingStats, (mlpId, mlpStats))
               }

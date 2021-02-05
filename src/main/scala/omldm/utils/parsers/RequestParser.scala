@@ -11,7 +11,8 @@ case class RequestParser() extends RichFlatMapFunction[String, Request] {
 
   override def flatMap(record: String, collector: Collector[Request]): Unit = {
     val request = mapper.readValue(record, classOf[Request])
-    if (request.isValid) collector.collect(request)
+    if (request.isValid)
+      collector.collect(request)
   }
 
 }

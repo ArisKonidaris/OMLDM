@@ -96,9 +96,12 @@ class StatisticsOperator(val jobName: String)
       val s = finalJobStats.value()
       println(s)
       assert(s.contains(msgStats._2.getPipeline))
-      s(msgStats._2.getPipeline).updateMeanBufferSize(msgStats._2.getMeanBufferSize)
-      s(msgStats._2.getPipeline).updateFitted(msgStats._2.getFitted)
-      s(msgStats._2.getPipeline).updateScore(msgStats._2.getScore)
+      if (s(msgStats._2.getPipeline).getProtocol != "SingleLearner") {
+        s(msgStats._2.getPipeline).updateMeanBufferSize(msgStats._2.getMeanBufferSize)
+        s(msgStats._2.getPipeline).updateFitted(msgStats._2.getFitted)
+        s(msgStats._2.getPipeline).updateScore(msgStats._2.getScore)
+      } else
+        s(msgStats._2.getPipeline).updateScore(msgStats._2.getScore)
       finalJobStats update s
       var cs = counter.value()
       cs += 1
@@ -108,7 +111,11 @@ class StatisticsOperator(val jobName: String)
             jobName,
             parallelism,
             end.value() - start.value(),
-            finalJobStats.value().toArray.sortBy(_._1).map(x => x._2)
+            finalJobStats.value().toArray.sortBy(_._1).map(x => {
+              if (x._2.getProtocol.equals("SingleLearner"))
+                x._2.setScore(x._2.getScore / parallelism)
+              x._2
+            })
           )
         )
       else
