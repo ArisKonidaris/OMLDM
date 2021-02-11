@@ -10,12 +10,13 @@ import org.apache.flink.streaming.api.functions.co.CoProcessFunction
 import java.io.Serializable
 import scala.collection.mutable.ListBuffer
 
-/** An abstract operators of a stateful remote spoke.
-  *
-  * @tparam InMsg   The message message type accepted by the spoke
-  * @tparam CtrlMsg The control message send by the coordinator to the remote sites
-  * @tparam OutMsg  The output message type emitted by the spoke
-  */
+/** An abstract operator of a stateful Flink remote spoke. A spoke like this can possess multiple [[BufferingWrapper]]
+ * instances that all process the incoming data records.
+ *
+ * @tparam InMsg   The message message type accepted by the spoke
+ * @tparam CtrlMsg The control message send by the coordinator to the remote sites
+ * @tparam OutMsg  The output message type emitted by the spoke
+ */
 abstract class SpokeLogic[InMsg <: Serializable, CtrlMsg <: Serializable, OutMsg <: Serializable]
   extends CoProcessFunction[InMsg, CtrlMsg, OutMsg]
     with CheckpointedFunction
@@ -23,9 +24,15 @@ abstract class SpokeLogic[InMsg <: Serializable, CtrlMsg <: Serializable, OutMsg
 
   protected var jobParallelism: Int = 0
 
+  /** A state variable holding all the Buffering wrapper objects of the current spoke. */
   protected val state: scala.collection.mutable.Map[Int, BufferingWrapper[InMsg]] =
     scala.collection.mutable.Map[Int, BufferingWrapper[InMsg]]()
-  protected var cache: DataSet[InMsg] = new DataSet[InMsg](100000)
+
+  /** A buffer for storing arriving records. */
+  protected var recordBuffer: DataSet[InMsg] = new DataSet[InMsg](100000)
+
+  /** A buffer for storing arriving requests. */
+  protected var requestBuffer: DataSet[CtrlMsg] = new DataSet[CtrlMsg](10000)
 
   def mergingDataBuffers(saved_buffers: ListState[DataSet[InMsg]]): DataSet[InMsg] = {
     var new_buffer = new DataSet[InMsg]()
@@ -42,11 +49,11 @@ abstract class SpokeLogic[InMsg <: Serializable, CtrlMsg <: Serializable, OutMsg
     new_buffer
   }
 
-  def parallelism: Int = {
+  def getJobParallelism: Int = {
     jobParallelism = getRuntimeContext.getExecutionConfig.getParallelism
     jobParallelism
   }
 
-  def checkParallelism: Boolean = jobParallelism == getRuntimeContext.getExecutionConfig.getParallelism
+  def checkJobParallelism: Boolean = jobParallelism == getRuntimeContext.getExecutionConfig.getParallelism
 
 }

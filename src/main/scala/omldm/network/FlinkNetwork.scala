@@ -5,6 +5,7 @@ import BipartiteTopologyAPI.interfaces.Network
 import BipartiteTopologyAPI.operations.RemoteCallIdentifier
 import BipartiteTopologyAPI.sites.{NetworkDescriptor, NodeId, NodeType}
 import ControlAPI._
+import mlAPI.protocols.IntWrapper
 import omldm.Job.{hubSideOutput, spokeSideOutput}
 import omldm.messages.{HubMessage, SpokeMessage}
 import org.apache.flink.streaming.api.functions.KeyedProcessFunction
@@ -19,7 +20,7 @@ import scala.collection.mutable
 case class FlinkNetwork[InMsg <: Serializable, CtrlMsg <: Serializable, OutMsg <: Serializable]
 (private var nodeType: NodeType,
  private var networkId: Int,
- private var numberOfSpokes: Int,
+ private var numberOfSpokes: IntWrapper,
  private var numberOfHubs: Int) extends Network {
 
   private var collector: Collector[OutMsg] = _
@@ -30,7 +31,7 @@ case class FlinkNetwork[InMsg <: Serializable, CtrlMsg <: Serializable, OutMsg <
 
   def setNetworkID(networkId: Int): Unit = this.networkId = networkId
 
-  def setNumberOfSpokes(numberOfSpokes: Int): Unit = this.numberOfSpokes = numberOfSpokes
+  def setNumberOfSpokes(numberOfSpokes: IntWrapper): Unit = this.numberOfSpokes = numberOfSpokes
 
   def setNumberOfHubs(numberOfHubs: Int): Unit = this.numberOfHubs = numberOfHubs
 
@@ -403,6 +404,6 @@ case class FlinkNetwork[InMsg <: Serializable, CtrlMsg <: Serializable, OutMsg <
     }
   }
 
-  override def describe(): NetworkDescriptor = new NetworkDescriptor(networkId, numberOfSpokes, numberOfHubs)
+  override def describe(): NetworkDescriptor = new NetworkDescriptor(networkId, numberOfSpokes.getInt, numberOfHubs)
 
 }

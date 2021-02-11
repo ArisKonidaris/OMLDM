@@ -115,10 +115,10 @@ object Job {
 
     env.getConfig.setGlobalJobParameters(params)
     env.setParallelism(params.get("parallelism", DefaultJobParameters.defaultParallelism).toInt)
-    env.setRestartStrategy(RestartStrategies.fixedDelayRestart(
-          3, // number of restart attempts
-          Time.of(10, TimeUnit.SECONDS) // delay
-        ))
+//    env.setRestartStrategy(RestartStrategies.fixedDelayRestart(
+//          3, // number of restart attempts
+//          Time.of(10, TimeUnit.SECONDS) // delay
+//        ))
     utils.CommonUtils.registerFlinkMLTypes(env)
     env.setStreamTimeCharacteristic(TimeCharacteristic.IngestionTime)
     if (params.get("checkpointing", "false").toBoolean) Checkpointing.enableCheckpointing()

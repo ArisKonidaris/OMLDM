@@ -5,6 +5,7 @@ import BipartiteTopologyAPI.sites.{NodeId, NodeType}
 import ControlAPI.{Request, Statistics}
 import mlAPI.mlParameterServers.MLParameterServer
 import mlAPI.mlParameterServers.proto.CentralizedMLServer
+import mlAPI.protocols.IntWrapper
 import omldm.Job.trainingStats
 import omldm.messages.{HubMessage, SpokeMessage}
 import omldm.network.FlinkNetwork
@@ -135,7 +136,7 @@ class FlinkHub[G <: NodeGenerator](val test: Boolean)(implicit man: Manifest[G])
     val flinkNetwork = FlinkNetwork[SpokeMessage, HubMessage, HubMessage](
       NodeType.HUB,
       message.getNetworkId,
-      parallelism,
+      IntWrapper(parallelism),
       if (parallelTraining && request.getTrainingConfiguration.containsKey("HubParallelism")) {
         mlAPI.utils.Parsing.IntegerParsing(request.getTrainingConfiguration.asScala,"HubParallelism", 1)
       } else

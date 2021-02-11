@@ -1,9 +1,10 @@
 package omldm.job
 
 import BipartiteTopologyAPI.sites.{NodeId, NodeType}
-import omldm.Job.{spokeSideOutput, hubSideOutput, terminationStats, trainingStats}
+import omldm.Job.{hubSideOutput, spokeSideOutput, terminationStats, trainingStats}
 import ControlAPI.{JobStatistics, Prediction, QueryResponse, Statistics}
 import mlAPI.math.UsablePoint
+import mlAPI.protocols.IntWrapper
 import omldm.messages.{ControlMessage, HubMessage, SpokeMessage}
 import omldm.operators.hub.FlinkHub
 import omldm.operators.spoke.FlinkSpoke
@@ -42,6 +43,7 @@ case class FlinkLearning(env: StreamExecutionEnvironment,
   val testing: Boolean = params.get("test", DefaultJobParameters.defaultTestParameter).toBoolean
   val maxMsgParams: Int = params.get("maxMsgParams", DefaultJobParameters.defaultMaxMsgParams).toInt
   val jobName: String = params.get("jobName", DefaultJobParameters.defaultJobName)
+  val spokeParallelism: Int = params.get("parallelism", DefaultJobParameters.defaultParallelism).toInt
 
 
   ////////////////////////////////////////// Testing Performance Topic /////////////////////////////////////////////////
@@ -82,7 +84,7 @@ case class FlinkLearning(env: StreamExecutionEnvironment,
 
   /** The parallel learning procedure happens here. */
   val worker: DataStream[SpokeMessage] = dataBlocks
-    .process(new FlinkSpoke[MLNodeGenerator](testing, maxMsgParams))
+    .process(new FlinkSpoke[MLNodeGenerator](testing, maxMsgParams, IntWrapper(spokeParallelism)))
     .name("FlinkSpoke")
 
   /** The coordinator operators, where the learners are merged. */
