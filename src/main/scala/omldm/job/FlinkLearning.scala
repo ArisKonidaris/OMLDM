@@ -68,9 +68,13 @@ case class FlinkLearning(env: StreamExecutionEnvironment,
         if (in.networkId == -1)
           for (worker <- 0 until getRuntimeContext.getExecutionConfig.getParallelism)
             out.collect(ControlMessage(-1, null, null, new NodeId(NodeType.SPOKE, worker), null, null))
-        else
-          for ((rpc, dest) <- in.operations zip in.destinations)
+        else {
+          for ((rpc, dest) <- in.operations zip in.destinations) {
+            if (in.destinations.length > 1 && in.getData == null)
+              println("Collect model " + dest)
             out.collect(ControlMessage(in.getNetworkId, rpc, in.getSource, dest, in.getData, in.getRequest))
+          }
+        }
       }
     })
 

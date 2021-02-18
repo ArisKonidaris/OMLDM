@@ -22,7 +22,7 @@ class StatisticsOperator(val jobName: String)
   extends KeyedProcessFunction[Int, (String, Statistics), JobStatistics]{
 
   /** The maximum waiting period. */
-  private val timeout: Long = 15000
+  private val timeout: Long = 20000
 
   /** The starting time of the distributed training. */
   private var start: ValueState[Long] = _
@@ -72,25 +72,27 @@ class StatisticsOperator(val jobName: String)
                               collector: Collector[JobStatistics])
   : Unit = {
 
-    // Update the timers.
-    if (!msgStats._1.equals("Terminate"))
+    if (!msgStats._1.equals("Terminate")) {
+
+      // Update the timers.
       if (start.value() < 0L)
         start.update(ctx.timestamp())
       else
         end.update(ctx.timestamp())
 
-    // Update the statistics.
-    if (!msgStats._1.equals("") && !msgStats._1.equals("Terminate"))
-      statsAccumulator add msgStats
+      // Update the statistics.
+      if (!msgStats._1.equals(""))
+        statsAccumulator add msgStats
 
-    if (!msgStats._1.equals("Terminate")) {
       // Set the state's timestamp to the record's assigned timestamp.
       val tempTime = ctx.timestamp()
       timestampState.update(tempTime)
 
       // Schedule the next timer timeout ms from the current record time.
       ctx.timerService.registerEventTimeTimer(tempTime + timeout)
+
     } else {
+
       if (finalJobStats.value().isEmpty)
         finalJobStats update statsAccumulator.get()
       val s = finalJobStats.value()
@@ -120,6 +122,7 @@ class StatisticsOperator(val jobName: String)
         )
       else
         counter.update(cs)
+
     }
 
   }
