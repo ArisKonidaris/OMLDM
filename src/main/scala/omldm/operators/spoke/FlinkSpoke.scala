@@ -62,9 +62,12 @@ class FlinkSpoke[G <: NodeGenerator](var test: Boolean,
   override def processElement1(data: UsablePoint,
                                ctx: CoProcessFunction[UsablePoint, ControlMessage, SpokeMessage]#Context,
                                out: Collector[SpokeMessage]): Unit = {
-    checkParallelism()
     collector = out
     context = ctx
+    checkParallelism()
+    if (getJobParallelism == spokeParallelism.getInt && requestBuffer.nonEmpty)
+      while (requestBuffer.nonEmpty)
+        createWrapper(requestBuffer.pop.get)
     if (state.nonEmpty) {
       if (recordBuffer.nonEmpty) {
         recordBuffer.append(data)
@@ -131,13 +134,12 @@ class FlinkSpoke[G <: NodeGenerator](var test: Boolean,
   def processElement2(message: ControlMessage,
                       ctx: CoProcessFunction[UsablePoint, ControlMessage, SpokeMessage]#Context,
                       out: Collector[SpokeMessage]): Unit = {
+    collector = out
+    context = ctx
+    checkParallelism()
     message match {
       case ControlMessage(network, operation, source, destination, data, request) =>
         checkId(destination.getNodeId)
-        checkParallelism()
-        collector = out
-        context = ctx
-
         operation match {
           case rpc: RemoteCallIdentifier =>
             if (state.contains(network)) {
@@ -155,6 +157,7 @@ class FlinkSpoke[G <: NodeGenerator](var test: Boolean,
                   println(s"Empty request in worker ${getRuntimeContext.getIndexOfThisSubtask}.")
               case req: Request =>
                 req.getRequest match {
+
                   case "Create" =>
                     if (getJobParallelism < spokeParallelism.getInt)
                       requestBuffer.append(message)
