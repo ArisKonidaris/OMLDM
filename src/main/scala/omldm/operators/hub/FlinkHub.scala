@@ -53,7 +53,6 @@ class FlinkHub[G <: NodeGenerator](val test: Boolean)(implicit man: Manifest[G])
   override def processElement(workerMessage: SpokeMessage,
                               ctx: KeyedProcessFunction[String, SpokeMessage, HubMessage]#Context,
                               out: Collector[HubMessage]): Unit = {
-
     workerMessage match {
       case SpokeMessage(network, operation, source, destination, data, request) =>
         request match {
