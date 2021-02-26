@@ -194,9 +194,10 @@ class FlinkSpoke[G <: NodeGenerator](var test: Boolean,
 
   def createWrapper(msg: ControlMessage): Unit = {
     if (!state.contains(msg.getNetworkId)) {
-      val parallelTraining: Boolean = getJobParallelism > 1
+      val parallelJob: Boolean = getJobParallelism > 1
+      var singleLearner: Boolean = false
       val hubParallelism: Int = {
-        if (parallelTraining)
+        if (parallelJob)
           try {
             Parsing.IntegerParsing(msg.getRequest.getTrainingConfiguration.asScala,"HubParallelism", 1)
           } catch {
@@ -216,12 +217,14 @@ class FlinkSpoke[G <: NodeGenerator](var test: Boolean,
         msg.getNetworkId -> new BufferingWrapper(
           new NodeId(NodeType.SPOKE, getRuntimeContext.getIndexOfThisSubtask),
           {
-            if (parallelTraining) {
+            if (parallelJob) {
               msg.getRequest.getLearner.name match {
                 case "HT" =>
                   msg.getRequest.getTrainingConfiguration.replace("protocol", "SingleLearner".asInstanceOf[AnyRef])
+                  singleLearner = true
                 case "K-means" =>
                   msg.getRequest.getTrainingConfiguration.replace("protocol", "SingleLearner".asInstanceOf[AnyRef])
+                  singleLearner = true
                 case _ =>
               }
               nodeFactory.generateSpokeNode(msg.getRequest)
@@ -232,7 +235,7 @@ class FlinkSpoke[G <: NodeGenerator](var test: Boolean,
           },
           flinkNetwork)
         )
-      if (getRuntimeContext.getIndexOfThisSubtask == 0 && parallelTraining)
+      if (getRuntimeContext.getIndexOfThisSubtask == 0 && !singleLearner)
         for (i <- 0 until hubParallelism)
           collector.collect(SpokeMessage(msg.getNetworkId, null, null, new NodeId(NodeType.HUB, i), null, msg.getRequest))
     }
