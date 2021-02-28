@@ -75,7 +75,7 @@ class StatisticsOperator(val jobName: String)
     if (!msgStats._1.equals("Terminate")) {
 
       // Update the timers.
-      if (start.value() < 0L)
+      if (start.value() < 0L && !msgStats._1.equals(""))
         start.update(ctx.timestamp())
       else
         end.update(ctx.timestamp())

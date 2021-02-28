@@ -79,7 +79,7 @@ class FlinkSpoke[G <: NodeGenerator](var test: Boolean,
       recordBuffer.append(data)
 
     // For calculating the performance of the training procedure.
-    if (test) {
+    if (test && getJobParallelism == spokeParallelism.getInt) {
       testingCount += 1
       if (testingCount == 100) {
         testingCount = 0
