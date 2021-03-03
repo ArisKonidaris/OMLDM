@@ -23,7 +23,7 @@ import org.apache.flink.streaming.connectors.kafka.{FlinkKafkaConsumer, FlinkKaf
 import java.util.concurrent.TimeUnit
 
 /**
- * The Online Machine Learning and Data Mining component.
+ * The Online Machine Learning & Data Mining component.
  */
 object Job {
 
