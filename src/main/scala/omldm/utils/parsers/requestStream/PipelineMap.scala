@@ -13,29 +13,36 @@ import scala.collection.JavaConverters._
 
 class PipelineMap() extends RichFlatMapFunction[Request, ControlMessage] {
 
-  private var node_map: MapState[Int, Request] = _
+  private var nodeMap: MapState[Int, Request] = _
 
   override def flatMap(request: Request, collector: Collector[ControlMessage]): Unit = {
 
     implicit val out: Collector[ControlMessage] = collector
 
     if (request.isValid) {
-      if (request.getLearner != null && !ValidLists.learners.contains(request.getLearner.getName)) return
+      if (request.getLearner != null && !ValidLists.learners.contains(request.getLearner.getName))
+        return
       if (request.getPreProcessors != null &&
         !(for (pp: PreprocessorPOJO <- request.getPreProcessors.asScala.toList)
           yield ValidLists.preprocessors.contains(pp.getName)
           ).reduce((x,y) => x && y)
-      ) return
-      if (!node_map.contains(request.getId) && request.getRequest == "Create") {
-        node_map.put(request.getId, request)
+      )
+        return
+      if (!nodeMap.contains(request.getId) && request.getRequest == "Create") {
+        nodeMap.put(request.getId, request)
         broadcastControlMessage(request)
         println(s"Pipeline ${request.getId} created.")
-      } else if (request.getRequest == "Update" && node_map.contains(request.getId)) {
+      } else if (request.getRequest == "Update" && nodeMap.contains(request.getId)) {
         broadcastControlMessage(request)
-      } else if (request.getRequest == "Query" && node_map.contains(request.getId)) {
+      } else if (request.getRequest == "Query" && nodeMap.contains(request.getId)) {
+//        val learnerName = nodeMap.get(request.getId).getLearner.getName
+//        if (learnerName.equals("HT") || learnerName.equals("K-means"))
+//          sendControlMessage(request)
+//        else
+//          broadcastControlMessage(request)
         sendControlMessage(request)
-      } else if (request.getRequest == "Delete" && node_map.contains(request.getId)) {
-        node_map.remove(request.getId)
+      } else if (request.getRequest == "Delete" && nodeMap.contains(request.getId)) {
+        nodeMap.remove(request.getId)
         broadcastControlMessage(request)
         println(s"Pipeline ${request.getId} deleted.")
       }
@@ -51,8 +58,8 @@ class PipelineMap() extends RichFlatMapFunction[Request, ControlMessage] {
   }
 
   override def open(parameters: Configuration): Unit = {
-    node_map = getRuntimeContext.getMapState(
-      new MapStateDescriptor[Int, Request]("node_map",
+    nodeMap = getRuntimeContext.getMapState(
+      new MapStateDescriptor[Int, Request]("nodeMap",
         createTypeInformation[Int],
         createTypeInformation[Request]))
   }

@@ -25,7 +25,8 @@ import scala.reflect.Manifest
 import scala.util.Random
 
 /** A CoFlatMap Flink Function modelling a worker request in a star distributed topology. */
-class FlinkSpoke[G <: NodeGenerator](var test: Boolean,
+class FlinkSpoke[G <: NodeGenerator](var testSetSize: Int,
+                                     var test: Boolean,
                                      var maxMsgParams: Int,
                                      val spokeParallelism: IntWrapper)(implicit man: Manifest[G])
   extends SpokeLogic[UsablePoint, ControlMessage, SpokeMessage] {
@@ -37,7 +38,7 @@ class FlinkSpoke[G <: NodeGenerator](var test: Boolean,
   private var testingCount: Int = 0
 
   /** The test set buffer. */
-  private var testSet: DataSet[UsablePoint] = new DataSet[UsablePoint](500)
+  private var testSet: DataSet[UsablePoint] = new DataSet[UsablePoint](testSetSize)
 
   /** Flink List State variables for storing the Flink Spoke state. */
   private var savedTestSet: ListState[DataSet[UsablePoint]] = _
@@ -89,7 +90,7 @@ class FlinkSpoke[G <: NodeGenerator](var test: Boolean,
   }
 
   private def handleData(data: UsablePoint): Unit = {
-    if (getRuntimeContext.getIndexOfThisSubtask == 0) {
+//    if (getRuntimeContext.getIndexOfThisSubtask == 0) {
       data match {
         case trainingPoint: TrainingPoint =>
           if (count >= 8) {
@@ -104,23 +105,23 @@ class FlinkSpoke[G <: NodeGenerator](var test: Boolean,
             count = 0
         case forecastingPoint: ForecastingPoint => for ((_, node: Node) <- state) node.receiveTuple(Array[Any](forecastingPoint))
       }
-    } else {
-      data match {
-        case trainingPoint: TrainingPoint =>
-          if (testSet.nonEmpty) {
-            testSet.append(trainingPoint) match {
-              case Some(point: Serializable) => for ((_, node: Node) <- state) node.receiveTuple(Array[Any](point))
-              case None =>
-            }
-            while (testSet.nonEmpty) {
-              val point = testSet.pop.get
-              for ((_, node: Node) <- state) node.receiveTuple(Array[Any](point))
-            }
-          } else
-            for ((_, node: Node) <- state) node.receiveTuple(Array[Any](data))
-        case forecastingPoint: ForecastingPoint => for ((_, node: Node) <- state) node.receiveTuple(Array[Any](forecastingPoint))
-      }
-    }
+//    } else {
+//      data match {
+//        case trainingPoint: TrainingPoint =>
+//          if (testSet.nonEmpty) {
+//            testSet.append(trainingPoint) match {
+//              case Some(point: Serializable) => for ((_, node: Node) <- state) node.receiveTuple(Array[Any](point))
+//              case None =>
+//            }
+//            while (testSet.nonEmpty) {
+//              val point = testSet.pop.get
+//              for ((_, node: Node) <- state) node.receiveTuple(Array[Any](point))
+//            }
+//          } else
+//            for ((_, node: Node) <- state) node.receiveTuple(Array[Any](data))
+//        case forecastingPoint: ForecastingPoint => for ((_, node: Node) <- state) node.receiveTuple(Array[Any](forecastingPoint))
+//      }
+//    }
   }
 
   /** The process function of the control stream.
@@ -178,11 +179,10 @@ class FlinkSpoke[G <: NodeGenerator](var test: Boolean,
                     if (req.getRequestId != null)
                       if (state.contains(network))
                         state(network).receiveQuery(req.getRequestId, (0, testSet.dataBuffer.toArray))
-                      else
-                        println("No such Network.")
-                    else println("No requestId given for the query.")
 
-                  case "Delete" => if (state.contains(network)) state.remove(network)
+                  case "Delete" =>
+                    if (state.contains(network))
+                      state.remove(network)
 
                   case _: String =>
                     println(s"Invalid req type in worker ${getRuntimeContext.getIndexOfThisSubtask}.")
@@ -367,5 +367,9 @@ class FlinkSpoke[G <: NodeGenerator](var test: Boolean,
 
   private def nodeFactory: NodeGenerator =
     man.runtimeClass.newInstance().asInstanceOf[NodeGenerator].setMaxMsgParams(maxMsgParams)
+
+  def getTestSetSize: Int = testSetSize
+
+  def setTestSetSize(testSetSize: Int): Unit = this.testSetSize = testSetSize
 
 }

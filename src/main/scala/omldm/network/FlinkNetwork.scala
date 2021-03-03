@@ -156,22 +156,25 @@ case class FlinkNetwork[InMsg <: Serializable, CtrlMsg <: Serializable, OutMsg <
       }
     else {
       val bucketedPar: mutable.HashMap[Int, util.Map[String, AnyRef]] = {
-        if (qResp.learner.getParameters != null)
+        try {
           split(qResp.learner.getParameters.entrySet())
-        else
-          new mutable.HashMap[Int, util.Map[String, AnyRef]]()
+        } catch {
+          case _: NullPointerException => new mutable.HashMap[Int, util.Map[String, AnyRef]]()
+        }
       }
       val bucketedHyperPar: mutable.HashMap[Int, util.Map[String, AnyRef]] = {
-        if (qResp.learner.hyperParameters != null)
+        try {
           split(qResp.learner.hyperParameters.entrySet())
-        else
-          new mutable.HashMap[Int, util.Map[String, AnyRef]]()
+        } catch {
+          case _: NullPointerException => new mutable.HashMap[Int, util.Map[String, AnyRef]]()
+        }
       }
       val bucketedStr: mutable.HashMap[Int, util.Map[String, AnyRef]] = {
-        if (qResp.learner.dataStructure != null)
+        try {
           split(qResp.learner.dataStructure.entrySet())
-        else
-          new mutable.HashMap[Int, util.Map[String, AnyRef]]()
+        } catch {
+          case _: NullPointerException => new mutable.HashMap[Int, util.Map[String, AnyRef]]()
+        }
       }
       val maxBuckets: Int = scala.math.max(scala.math.max(bucketedPar.size, bucketedHyperPar.size), bucketedStr.size) - 1
       val mixedMap = mutable.HashMap[Int, (util.Map[String, AnyRef], util.Map[String, AnyRef], util.Map[String, AnyRef])]()

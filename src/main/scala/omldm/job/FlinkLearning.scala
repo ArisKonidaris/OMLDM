@@ -8,7 +8,7 @@ import mlAPI.protocols.IntWrapper
 import omldm.messages.{ControlMessage, HubMessage, SpokeMessage}
 import omldm.operators.hub.FlinkHub
 import omldm.operators.spoke.FlinkSpoke
-import omldm.utils.{DefaultJobParameters, JobTerminator, PerformanceWriter}
+import omldm.utils.{DefaultJobParameters, JobTerminator, PerformanceWriter, ResponseConstructor}
 import omldm.utils.KafkaUtils.createProperties
 import omldm.utils.generators.MLNodeGenerator
 import omldm.utils.partitioners.random_partitioner
@@ -44,7 +44,8 @@ case class FlinkLearning(env: StreamExecutionEnvironment,
   val maxMsgParams: Int = params.get("maxMsgParams", DefaultJobParameters.defaultMaxMsgParams).toInt
   val jobName: String = params.get("jobName", DefaultJobParameters.defaultJobName)
   val spokeParallelism: Int = params.get("parallelism", DefaultJobParameters.defaultParallelism).toInt
-
+  val timeout: Long = params.get("timeout", DefaultJobParameters.defaultTimeout).toLong
+  val testSetSize: Int = params.get("testSetSize", DefaultJobParameters.defaultTestSetSize).toInt
 
   ////////////////////////////////////////// Testing Performance Topic /////////////////////////////////////////////////
 
@@ -68,13 +69,9 @@ case class FlinkLearning(env: StreamExecutionEnvironment,
         if (in.networkId == -1)
           for (worker <- 0 until getRuntimeContext.getExecutionConfig.getParallelism)
             out.collect(ControlMessage(-1, null, null, new NodeId(NodeType.SPOKE, worker), null, null))
-        else {
-          for ((rpc, dest) <- in.operations zip in.destinations) {
-            if (in.destinations.length > 1 && in.getData == null)
-              println("Collect model " + dest)
+        else
+          for ((rpc, dest) <- in.operations zip in.destinations)
             out.collect(ControlMessage(in.getNetworkId, rpc, in.getSource, dest, in.getData, in.getRequest))
-          }
-        }
       }
     })
 
@@ -88,7 +85,7 @@ case class FlinkLearning(env: StreamExecutionEnvironment,
 
   /** The parallel learning procedure happens here. */
   val worker: DataStream[SpokeMessage] = dataBlocks
-    .process(new FlinkSpoke[MLNodeGenerator](testing, maxMsgParams, IntWrapper(spokeParallelism)))
+    .process(new FlinkSpoke[MLNodeGenerator](testSetSize, testing, maxMsgParams, IntWrapper(spokeParallelism)))
     .name("FlinkSpoke")
 
   /** The coordinator operators, where the learners are merged. */
@@ -107,6 +104,7 @@ case class FlinkLearning(env: StreamExecutionEnvironment,
   /** The query responses of the spokes. */
   val queryResponses: DataStream[QueryResponse] = worker.getSideOutput(spokeSideOutput)
     .filter(x => x.isInstanceOf[QueryResponse])
+//    .flatMap(new ResponseConstructor(testSetSize))
     .union(coordinator.getSideOutput(hubSideOutput).filter(x => x.isInstanceOf[QueryResponse]))
     .map(x => x.asInstanceOf[QueryResponse])
 
@@ -122,7 +120,7 @@ case class FlinkLearning(env: StreamExecutionEnvironment,
         )
     )
     .keyBy(_ => 0)
-    .process(new StatisticsOperator(jobName))
+    .process(new StatisticsOperator(jobName, testSetSize, timeout))
 
   /** A Kafka Sink for the training performance results. */
   performance

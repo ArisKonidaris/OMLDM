@@ -18,11 +18,10 @@ import scala.collection.mutable
  *
  * @param jobName The job name of the Flink Job.
  */
-class StatisticsOperator(val jobName: String)
+class StatisticsOperator(val jobName: String,
+                         var testSetSize: Int,
+                         var timeout: Long)
   extends KeyedProcessFunction[Int, (String, Statistics), JobStatistics]{
-
-  /** The maximum waiting period. */
-  private val timeout: Long = 20000
 
   /** The starting time of the distributed training. */
   private var start: ValueState[Long] = _
@@ -101,7 +100,7 @@ class StatisticsOperator(val jobName: String)
       if (s(msgStats._2.getPipeline).getProtocol != "SingleLearner") {
         s(msgStats._2.getPipeline).updateMeanBufferSize(msgStats._2.getMeanBufferSize)
         s(msgStats._2.getPipeline).updateFitted(msgStats._2.getFitted)
-        s(msgStats._2.getPipeline).updateScore(msgStats._2.getScore)
+        s(msgStats._2.getPipeline).updateScore(msgStats._2.getScore * getTestSetSize)
       } else
         s(msgStats._2.getPipeline).updateScore(msgStats._2.getScore)
       finalJobStats update s
@@ -116,6 +115,8 @@ class StatisticsOperator(val jobName: String)
             finalJobStats.value().toArray.sortBy(_._1).map(x => {
               if (x._2.getProtocol.equals("SingleLearner"))
                 x._2.setScore(x._2.getScore / parallelism)
+              else
+                x._2.setScore(x._2.getScore / (parallelism * getTestSetSize))
               x._2
             })
           )
@@ -137,5 +138,9 @@ class StatisticsOperator(val jobName: String)
   }
 
   def parallelism: Int = getRuntimeContext.getExecutionConfig.getParallelism
+
+  def getTestSetSize: Int = testSetSize
+
+  def setTestSetSize(testSetSize: Int): Unit = this.testSetSize = testSetSize
 
 }
