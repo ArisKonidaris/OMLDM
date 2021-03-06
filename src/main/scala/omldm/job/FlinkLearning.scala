@@ -58,7 +58,6 @@ case class FlinkLearning(env: StreamExecutionEnvironment,
       .setStartFromLatest())
     .flatMap(new JobTerminator(jobName)).name("PerformanceSource")
 
-
   ///////////////////////////////////////////// Training & Prediction //////////////////////////////////////////////////
 
 
@@ -104,7 +103,8 @@ case class FlinkLearning(env: StreamExecutionEnvironment,
   /** The query responses of the spokes. */
   val queryResponses: DataStream[QueryResponse] = worker.getSideOutput(spokeSideOutput)
     .filter(x => x.isInstanceOf[QueryResponse])
-//    .flatMap(new ResponseConstructor(testSetSize))
+    .keyBy(_ => 0)
+    .flatMap(new ResponseConstructor(testSetSize))
     .union(coordinator.getSideOutput(hubSideOutput).filter(x => x.isInstanceOf[QueryResponse]))
     .map(x => x.asInstanceOf[QueryResponse])
 

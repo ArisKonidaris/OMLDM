@@ -115,8 +115,12 @@ class StatisticsOperator(val jobName: String,
             finalJobStats.value().toArray.sortBy(_._1).map(x => {
               if (x._2.getProtocol.equals("SingleLearner"))
                 x._2.setScore(x._2.getScore / parallelism)
-              else
+              else {
+                println("---> " + x._2.getScore)
+                println("---> " + parallelism * getTestSetSize * 1.0)
+                println("---> " + x._2.getScore / (parallelism * getTestSetSize * 1.0))
                 x._2.setScore(x._2.getScore / (parallelism * getTestSetSize * 1.0))
+              }
               x._2
             })
           )

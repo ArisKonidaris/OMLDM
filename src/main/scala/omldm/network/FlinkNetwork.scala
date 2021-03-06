@@ -184,7 +184,7 @@ case class FlinkNetwork[InMsg <: Serializable, CtrlMsg <: Serializable, OutMsg <
         val item3 = if (bucketedStr.contains(i)) bucketedStr(i) else null
         mixedMap.put(i, (item1, item2, item3))
       }
-      if (maxBuckets == 0)
+      if (maxBuckets < 2)
         nodeType match {
           case NodeType.SPOKE => context.output(spokeSideOutput, qResp)
           case NodeType.HUB => keyedContext.output(hubSideOutput, qResp)
@@ -195,7 +195,7 @@ case class FlinkNetwork[InMsg <: Serializable, CtrlMsg <: Serializable, OutMsg <
             if (key == 0) {
               new QueryResponse(
                 qResp.getResponseId,
-                0,
+                key,
                 qResp.getMlpId,
                 null,
                 {
@@ -211,21 +211,22 @@ case class FlinkNetwork[InMsg <: Serializable, CtrlMsg <: Serializable, OutMsg <
                 qResp.getResponseId,
                 key,
                 qResp.getMlpId,
-                if (key == bucketedPar.size -1) qResp.getPreprocessors else null,
+                if (key == bucketedPar.size - 1)
+                  qResp.getPreprocessors
+                else
+                  null,
                 {
                   val learner = qResp.getLearner
-                  if (key != bucketedPar.size -1) {
-                    learner.setDataStructure(value._3)
-                    learner.setHyperParameters(value._2)
-                  }
+                  learner.setDataStructure(value._3)
+                  learner.setHyperParameters(value._2)
                   learner.setParameters(value._1)
                   learner
                 },
-                qResp.getProtocol,
-                qResp.getDataFitted,
-                qResp.getLoss,
-                qResp.getCumulativeLoss,
-                qResp.getScore
+                if (key == bucketedPar.size - 1) qResp.getProtocol else null,
+                if (key == bucketedPar.size - 1) qResp.getDataFitted else null,
+                if (key == bucketedPar.size - 1) qResp.getLoss else null,
+                if (key == bucketedPar.size - 1) qResp.getCumulativeLoss else null,
+                if (key == bucketedPar.size - 1) qResp.getScore else null
               )
             }
           }
@@ -238,130 +239,14 @@ case class FlinkNetwork[InMsg <: Serializable, CtrlMsg <: Serializable, OutMsg <
     }
   }
 
-//  def sendQueryResponse(qResp: QueryResponse, nodeType: NodeType): Unit = {
-//    if (qResp.getResponseId == -1)
-//      nodeType match {
-//        case NodeType.SPOKE => context.output(spokeSideOutput, qResp)
-//        case NodeType.HUB => keyedContext.output(hubSideOutput, qResp)
-//      }
-//    else {
-//      if (qResp.learner.getName == "HT") {
-//        nodeType match {
-//          case NodeType.SPOKE => context.output(spokeSideOutput, qResp)
-//          case NodeType.HUB => keyedContext.output(hubSideOutput, qResp)
-//        }
-//      } else {
-//        val maxParamBucketSize = 10000
-//        val bucketedPar = mutable.HashMap[Int, util.Map[String, AnyRef]]()
-//        qResp.learner.getParameters.entrySet().forEach(
-//          entry => {
-//            val paramsName: String = entry.getKey
-//            val params: Array[Double] = {
-//              entry.getValue.asInstanceOf[Any] match {
-//                case double: Double => Array(double)
-//                case doubles: Array[Double] => doubles
-//                case null => Array()
-//              }
-//            }
-//            val buckets: Int = params.length / maxParamBucketSize +
-//              {
-//                if (params.length % maxParamBucketSize == 0) 0 else 1
-//              }
-//            if (buckets == 1) {
-//              val key = paramsName
-//              val value = { if (params.length == 1) params.head else params }.asInstanceOf[AnyRef]
-//              if (!bucketedPar.contains(0))
-//                bucketedPar.put(0, {
-//                  val m = new util.HashMap[String, AnyRef]()
-//                  m.put(key, value)
-//                  m
-//                })
-//              else
-//                bucketedPar(0).put(key, value)
-//            } else {
-//              for (i: Int <- 0 until buckets) {
-//                val start = i * maxParamBucketSize
-//                val end = {
-//                  if (i == buckets - 1)
-//                    start + params.length % maxParamBucketSize - 1
-//                  else
-//                    (i + 1) * maxParamBucketSize - 1
-//                }
-//                val key = paramsName + "[" + start + "-" + end + "]"
-//                val value = {
-//                  val slice = params.slice(start, end + 1)
-//                  (if (slice.length == 1) slice.head else slice).asInstanceOf[AnyRef]
-//                }
-//                if (!bucketedPar.contains(i))
-//                  bucketedPar.put(i, {
-//                    val m = new util.HashMap[String, AnyRef]()
-//                    m.put(key, value)
-//                    m
-//                  })
-//                else
-//                  bucketedPar(i).put(key, value)
-//              }
-//            }
-//          }
-//        )
-//        if (bucketedPar.size == 1)
-//          nodeType match {
-//            case NodeType.SPOKE => context.output(spokeSideOutput, qResp)
-//            case NodeType.HUB => keyedContext.output(hubSideOutput, qResp)
-//          }
-//        else {
-//          for ((key, value) <- bucketedPar.toArray.sortBy(x => x._1)) {
-//            val bucketResponse = {
-//              if (key == 0) {
-//                new QueryResponse(qResp.getResponseId, 0, qResp.getMlpId,
-//                  null,
-//                  {
-//                    val learner = qResp.getLearner
-//                    learner.setDataStructure(null)
-//                    learner.setHyperParameters(null)
-//                    learner.setParameters(value)
-//                    learner
-//                  }, null, null, null, null, null
-//                )
-//              } else {
-//                new QueryResponse(qResp.getResponseId,
-//                  key,
-//                  qResp.getMlpId,
-//                  if (key == bucketedPar.size -1) qResp.getPreprocessors else null,
-//                  {
-//                    val learner = qResp.getLearner
-//                    if (key != bucketedPar.size -1) {
-//                      learner.setDataStructure(null)
-//                      learner.setHyperParameters(null)
-//                    }
-//                    learner.setParameters(value)
-//                    learner
-//                  },
-//                  qResp.getProtocol,
-//                  qResp.getDataFitted,
-//                  qResp.getLoss,
-//                  qResp.getCumulativeLoss,
-//                  qResp.getScore
-//                )
-//              }
-//            }
-//            nodeType match {
-//              case NodeType.SPOKE => context.output(spokeSideOutput, bucketResponse)
-//              case NodeType.HUB => keyedContext.output(hubSideOutput, bucketResponse)
-//            }
-//          }
-//        }
-//      }
-//    }
-//  }
-
   override def send(source: NodeId, destination: NodeId, rpc: RemoteCallIdentifier, message: Serializable): Unit = {
     destination match {
       case null =>
         nodeType match {
           case NodeType.SPOKE =>
             message.asInstanceOf[Array[Any]](0) match {
-              case qResp: QueryResponse => sendQueryResponse(qResp, NodeType.SPOKE)
+              case qResp: QueryResponse =>
+                sendQueryResponse(qResp, NodeType.SPOKE)
               case pred: Prediction => context.output(spokeSideOutput, pred)
             }
           case NodeType.HUB =>

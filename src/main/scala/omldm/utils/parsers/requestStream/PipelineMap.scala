@@ -35,12 +35,12 @@ class PipelineMap() extends RichFlatMapFunction[Request, ControlMessage] {
       } else if (request.getRequest == "Update" && nodeMap.contains(request.getId)) {
         broadcastControlMessage(request)
       } else if (request.getRequest == "Query" && nodeMap.contains(request.getId)) {
-//        val learnerName = nodeMap.get(request.getId).getLearner.getName
-//        if (learnerName.equals("HT") || learnerName.equals("K-means"))
-//          sendControlMessage(request)
-//        else
-//          broadcastControlMessage(request)
-        sendControlMessage(request)
+        val learnerName = nodeMap.get(request.getId).getLearner.getName
+        if (learnerName.equals("HT") || learnerName.equals("K-means"))
+          sendControlMessage(request)
+        else
+          broadcastControlMessage(request)
+//        sendControlMessage(request)
       } else if (request.getRequest == "Delete" && nodeMap.contains(request.getId)) {
         nodeMap.remove(request.getId)
         broadcastControlMessage(request)
