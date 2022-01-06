@@ -103,7 +103,7 @@ class StatisticsOperator(val jobName: String,
         s(msgStats._2.getPipeline).updateScore(msgStats._2.getScore * (getTestSetSize * 1.0))
       } else
         s(msgStats._2.getPipeline).updateScore(msgStats._2.getScore)
-      finalJobStats update s
+      finalJobStats.update(s)
       var cs = counter.value()
       cs += 1
       if (cs == parallelism * finalJobStats.value().size)

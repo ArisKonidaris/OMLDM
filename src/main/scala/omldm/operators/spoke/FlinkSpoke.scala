@@ -79,7 +79,7 @@ class FlinkSpoke[G <: NodeGenerator](var testSetSize: Int,
     } else
       recordBuffer.append(data)
 
-    // For calculating the performance of the training procedure.
+    // For calculating the performance of the training procedure. (Polling)
     if (test && getJobParallelism == spokeParallelism.getInt) {
       testingCount += 1
       if (testingCount == 100) {
@@ -90,7 +90,6 @@ class FlinkSpoke[G <: NodeGenerator](var testSetSize: Int,
   }
 
   private def handleData(data: UsablePoint): Unit = {
-//    if (getRuntimeContext.getIndexOfThisSubtask == 0) {
       data match {
         case trainingPoint: TrainingPoint =>
           if (count >= 8) {
@@ -105,23 +104,6 @@ class FlinkSpoke[G <: NodeGenerator](var testSetSize: Int,
             count = 0
         case forecastingPoint: ForecastingPoint => for ((_, node: Node) <- state) node.receiveTuple(Array[Any](forecastingPoint))
       }
-//    } else {
-//      data match {
-//        case trainingPoint: TrainingPoint =>
-//          if (testSet.nonEmpty) {
-//            testSet.append(trainingPoint) match {
-//              case Some(point: Serializable) => for ((_, node: Node) <- state) node.receiveTuple(Array[Any](point))
-//              case None =>
-//            }
-//            while (testSet.nonEmpty) {
-//              val point = testSet.pop.get
-//              for ((_, node: Node) <- state) node.receiveTuple(Array[Any](point))
-//            }
-//          } else
-//            for ((_, node: Node) <- state) node.receiveTuple(Array[Any](data))
-//        case forecastingPoint: ForecastingPoint => for ((_, node: Node) <- state) node.receiveTuple(Array[Any](forecastingPoint))
-//      }
-//    }
   }
 
   /** The process function of the control stream.

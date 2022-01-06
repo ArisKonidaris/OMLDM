@@ -17,6 +17,7 @@ import org.apache.flink.streaming.api.functions.KeyedProcessFunction
 import org.apache.flink.streaming.api.scala.createTypeInformation
 import org.apache.flink.util.Collector
 
+import java.{lang, util}
 import scala.collection.JavaConverters._
 import scala.reflect.Manifest
 import scala.util.control.Breaks.{break, breakable}
@@ -74,10 +75,10 @@ class FlinkHub[G <: NodeGenerator](val test: Boolean)(implicit man: Manifest[G])
                   cache.get match {
                     case Some(mess: SpokeMessage) =>
                       state add(mess, ctx, out)
-                      state.get().getNode match {
-                        case ps: MLParameterServer[_, _] => println("Status: " + ps.getNumberOfFittedData)
-                        case cl: CentralizedMLServer => println("Status: " + cl.fitted)
-                      }
+//                      state.get().getNode match {
+//                        case ps: MLParameterServer[_, _] => println("Status: " + ps.getNumberOfFittedData)
+//                        case cl: CentralizedMLServer => println("Status: " + cl.fitted)
+//                      }
 //                      println("Status: " + state.get().getNode.asInstanceOf[MLParameterServer[_, _]].getNumberOfFittedData)
                     case _ => break
                   }
@@ -85,10 +86,10 @@ class FlinkHub[G <: NodeGenerator](val test: Boolean)(implicit man: Manifest[G])
               }
               state add(workerMessage, ctx, out)
               if (test) {
-                state.get().getNode match {
-                  case ps: MLParameterServer[_, _] => println("Status: " + ps.getNumberOfFittedData)
-                  case cl: CentralizedMLServer => println("Status: " + cl.fitted)
-                }
+//                state.get().getNode match {
+//                  case ps: MLParameterServer[_, _] => println("Status: " + ps.getNumberOfFittedData)
+//                  case cl: CentralizedMLServer => println("Status: " + cl.fitted)
+//                }
 //                println("Status: " + state.get().getNode.asInstanceOf[MLParameterServer[_, _]].getNumberOfFittedData)
 //                println(state.get().getNode.asInstanceOf[MLParameterServer[_, _]].getProtocolStatistics)
                 val mlpId: String = state.get().getNetwork.describe().getNetworkId + "_" + ctx.getCurrentKey
@@ -96,23 +97,59 @@ class FlinkHub[G <: NodeGenerator](val test: Boolean)(implicit man: Manifest[G])
                   state.get().getNode match {
                     case ps: MLParameterServer[_, _] =>
                       val s = ps.getProtocolStatistics
+
+                      val learningCurve: (util.List[lang.Double], util.List[lang.Long]) = {
+                        if (ps.getNodeId == 0) {
+                          if (ps.getIdx < ps.getLearningCurve.length) {
+                            val slice: List[(Double, Long)] = ps.getLearningCurve.dataBuffer
+                              .slice(ps.getIdx, ps.getLearningCurve.length).toList
+                            ps.setIdx(ps.getLearningCurve.length)
+                            (slice.map(x => x._1).map(Double.box).asJava, slice.map(x => x._2).map(Long.box).asJava)
+                          } else
+                            (null, null)
+                        } else
+                          (null, null)
+                      }
+
+                      if (learningCurve._1 != null) {
+                        println(ps.getNumberOfFittedData)
+                      }
+
                       new Statistics(
                         mlpId.split("_")(0).toInt,
                         s.getProtocol,
                         s.getModelsShipped,
                         s.getBytesShipped,
                         s.getNumOfBlocks,
-                        state.get().getNode.asInstanceOf[MLParameterServer[_, _]].getNumberOfFittedData
+                        ps.getNumberOfFittedData,
+                        learningCurve._1,
+                        learningCurve._2
                       )
                     case cl: CentralizedMLServer =>
                       val s = cl.getProtocolStatistics
+
+                      val learningCurve: (util.List[lang.Double], util.List[lang.Long]) = {
+                        if (cl.getNodeId == 0) {
+                          if (cl.getIdx < cl.getLearningCurve.length - 1) {
+                            val slice: List[(Double, Long)] = cl.getLearningCurve.dataBuffer
+                              .slice(cl.getIdx, cl.getLearningCurve.length).toList
+                            cl.setIdx(cl.getLearningCurve.length)
+                            (slice.map(x => x._1).map(Double.box).asJava, slice.map(x => x._2).map(Long.box).asJava)
+                          } else
+                            (null, null)
+                        } else
+                          (null, null)
+                      }
+
                       new Statistics(
                         mlpId.split("_")(0).toInt,
                         s.getProtocol,
                         s.getModelsShipped,
                         s.getBytesShipped,
                         s.getNumOfBlocks,
-                        cl.fitted
+                        cl.fitted,
+                        learningCurve._1,
+                        learningCurve._2
                       )
                   }
                 }
@@ -158,4 +195,5 @@ class FlinkHub[G <: NodeGenerator](val test: Boolean)(implicit man: Manifest[G])
   }
 
 }
+
 

@@ -15,6 +15,9 @@ import scala.collection.mutable.ListBuffer
 import org.apache.flink.streaming.api.functions.KeyedProcessFunction
 import org.apache.flink.util.Collector
 
+import java.util.stream.Collectors
+import java.{lang, util}
+
 class Counter(counter: Long) {
   def this() = this(0)
 }
@@ -68,8 +71,22 @@ class StatisticsAggregateFunction()
         assert(!acc.mlpHubIds(in._2.getPipeline).contains(in._1))
         acc.mlpHubIds(in._2.getPipeline) += in._1
         acc.stats.put(in._1, in._2)
-      } else
+      } else {
+        if (in._1.split("_")(2) == "0" && acc.stats(in._1).getLearningCurve != null) {
+          if (in._2.getLearningCurve != null) {
+            val y: util.ArrayList[lang.Double] = new util.ArrayList(acc.stats(in._1).getLearningCurve)
+            y.addAll(in._2.getLearningCurve)
+            val x: util.ArrayList[lang.Long] = new util.ArrayList(acc.stats(in._1).getLCX)
+            x.addAll(in._2.getLCX)
+            in._2.setLearningCurve(y)
+            in._2.setLCX(x)
+          } else {
+            in._2.setLearningCurve(acc.stats(in._1).getLearningCurve)
+            in._2.setLCX(acc.stats(in._1).getLCX)
+          }
+        }
         acc.stats(in._1) = in._2
+      }
     }
     acc
   }

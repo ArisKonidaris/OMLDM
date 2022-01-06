@@ -24,11 +24,11 @@ import org.apache.flink.util.Collector
 /**
  * A Flink Job Graph for distributed Machine Learning Training.
  *
- * @param env          The [[StreamExecutionEnvironment]] instance.
- * @param dataStream   The training and forecasting data stream.
- * @param requests     The user requests stream for the Job.
- * @param psMessages   The coordinator messages stream.
- * @param params       The Flink job parameters.
+ * @param env        The [[StreamExecutionEnvironment]] instance.
+ * @param dataStream The training and forecasting data stream.
+ * @param requests   The user requests stream for the Job.
+ * @param psMessages The coordinator messages stream.
+ * @param params     The Flink job parameters.
  */
 case class FlinkLearning(env: StreamExecutionEnvironment,
                          dataStream: DataStream[UsablePoint],
@@ -116,7 +116,19 @@ case class FlinkLearning(env: StreamExecutionEnvironment,
         .filter(x => x.responseId == -1)
         .map(x => (
           "Terminate",
-          new Statistics(x.getMlpId, null, x.getCumulativeLoss, 0, 0, 0, x.getDataFitted, x.getScore))
+          new Statistics(
+            x.getMlpId,
+            null,
+            x.getCumulativeLoss,
+            0,
+            0,
+            0,
+            x.getDataFitted,
+            x.getScore,
+            null,
+            null
+          )
+        )
         )
     )
     .keyBy(_ => 0)

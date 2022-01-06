@@ -40,7 +40,6 @@ class PipelineMap() extends RichFlatMapFunction[Request, ControlMessage] {
           sendControlMessage(request)
         else
           broadcastControlMessage(request)
-//        sendControlMessage(request)
       } else if (request.getRequest == "Delete" && nodeMap.contains(request.getId)) {
         nodeMap.remove(request.getId)
         broadcastControlMessage(request)

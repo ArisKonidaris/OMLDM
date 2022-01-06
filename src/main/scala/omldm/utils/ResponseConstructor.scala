@@ -32,7 +32,7 @@ class ResponseConstructor(var testSetSize: Int) extends RichFlatMapFunction[Coun
               if (newResponseList.length == parallelism) {
                 requestMap.remove(qr.getResponseId)
                 val finalResponse = newResponseList.head
-                finalResponse.setScore(finalResponse.getScore * getTestSetSize)
+//                finalResponse.setScore(finalResponse.getScore * (getTestSetSize * 1.0))
                 for (resp <- newResponseList.tail) {
                   if (resp.getPreprocessors != null)
                     finalResponse.setPreprocessors(resp.getPreprocessors)
@@ -43,11 +43,13 @@ class ResponseConstructor(var testSetSize: Int) extends RichFlatMapFunction[Coun
                   finalResponse.setDataFitted(finalResponse.getDataFitted + resp.getDataFitted)
                   finalResponse.setLoss(finalResponse.getLoss + resp.getLoss)
                   finalResponse.setCumulativeLoss(finalResponse.getCumulativeLoss + resp.getCumulativeLoss)
-                  finalResponse.setScore(finalResponse.getScore + resp.getScore * (getTestSetSize * 1.0))
+//                  finalResponse.setScore(finalResponse.getScore + resp.getScore * (getTestSetSize * 1.0))
+                  finalResponse.setScore(finalResponse.getScore + resp.getScore)
                 }
-                finalResponse.setLoss(finalResponse.getLoss / (parallelism * 0.1))
+                finalResponse.setLoss(finalResponse.getLoss / (parallelism * 1.0))
                 finalResponse.setCumulativeLoss(finalResponse.getCumulativeLoss / (parallelism * 1.0))
-                finalResponse.setScore(finalResponse.getScore / (getTestSetSize * parallelism * 1.0))
+//                finalResponse.setScore(finalResponse.getScore / (getTestSetSize * parallelism * 1.0))
+                finalResponse.setScore(finalResponse.getScore / (parallelism * 1.0))
                 collector.collect(finalResponse)
               } else
                 requestMap.put(qr.getResponseId, newResponseList)
